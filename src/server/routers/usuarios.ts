@@ -11,6 +11,7 @@ const userSelect = {
   email: true,
   nombre: true,
   creadoEn: true,
+  oidcSub: true,
   passwordHash: false,
 };
 
@@ -92,6 +93,36 @@ export const usuariosRouter = router({
         where: { id: input.id },
         data: { passwordHash, sesionesDesde: new Date() },
       });
+    }),
+
+  // Only replacing or removing a link closes sessions: linking for the first
+  // time doesn't take anything away, and shouldn't log the user out.
+  vincularOidc: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        sub: z.string().trim().min(1).max(255).nullable(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const user = await findUserOrThrow(input.id);
+      try {
+        await prisma.user.update({
+          where: { id: input.id },
+          data: {
+            oidcSub: input.sub,
+            ...(user.oidcSub &&
+              user.oidcSub !== input.sub && { sesionesDesde: new Date() }),
+          },
+        });
+      } catch (err) {
+        if ((err as { code?: string }).code === "P2002")
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Ese identificador ya está vinculado a otro usuario",
+          });
+        throw err;
+      }
     }),
 
   eliminar: protectedProcedure.input(idInput).mutation(async ({ input }) => {

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { env } from "@/env";
 import { auth } from "@/lib/auth";
 import { createServerCaller } from "@/server/caller";
 import { GestionUsuarios } from "@/components/dashboard/GestionUsuarios";
@@ -17,7 +18,10 @@ export default async function UsuariosPage() {
     <div className="flex flex-col gap-6 px-5 md:px-10 pt-7 pb-14">
       <PageHeader comando="who" titulo="Usuarios" />
       <section className="max-w-3xl rounded-[var(--radius-lg)] bg-surface border border-border p-5">
-        <GestionUsuarios usuariosIniciales={usuarios} />
+        <GestionUsuarios
+          usuariosIniciales={usuarios}
+          oidcActivo={Boolean(env.OIDC_ISSUER)}
+        />
       </section>
     </div>
   );

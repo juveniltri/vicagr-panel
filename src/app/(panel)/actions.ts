@@ -406,6 +406,15 @@ export async function cambiarPasswordAction(id: string, password: string) {
   }
 }
 
+export async function vincularOidcAction(id: string, sub: string | null) {
+  try {
+    const api = await createServerCaller();
+    await api.usuarios.vincularOidc({ id, sub });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al vincular con Pocket ID") };
+  }
+}
+
 export async function eliminarUsuarioAction(id: string) {
   try {
     const api = await createServerCaller();

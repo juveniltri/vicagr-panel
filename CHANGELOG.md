@@ -5,6 +5,35 @@ Novedades. Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES
 cada versión con su fecha, un resumen de una línea y los apartados Novedades,
 Correcciones y Seguridad.
 
+## [2.5.0] - 2026-11-01
+
+Entrada al Panel con passkey a través de Pocket ID, y fuentes servidas desde el propio Panel.
+
+### Novedades
+
+- **Entrar con Pocket ID** (opcional): el equipo entra con passkey, con una sola cuenta para los
+  Paneles de las VPS de desarrollo y producción. Sin configurarlo, el Panel funciona como hasta ahora.
+- **Usuarios → Pocket ID**: vincula cada usuario con su cuenta. Solo entra quien esté vinculado a
+  mano, nunca por coincidir el email ni con alta automática. Quitar o cambiar el vínculo cierra sus
+  sesiones al momento.
+- El usuario y la contraseña siguen funcionando siempre, también si Pocket ID está caído.
+
+### Correcciones
+
+- Las fuentes van incluidas en el Panel: actualizar en la VPS ya no falla si Google no responde.
+
+### Seguridad
+
+- Las sesiones iniciadas con Pocket ID caducan a las 12 horas.
+- El CSP deja de permitir los dominios de Google Fonts.
+
+### Al actualizar
+
+- Levanta el stack completo: `git pull && docker compose up -d --build`. La migración se aplica
+  sola y no hace falta ninguna variable nueva.
+- Si vienes de la 2.3.x o anterior, haz antes los pasos de esas versiones: `production.md` § B2b, § B3 y § B4.
+- Para activar Pocket ID: `production.md` § F. Detalle de la actualización en § B2a.
+
 ## [2.4.0] - 2026-11-01
 
 Copias y restauración de las bases de datos y los datos de cada Proyecto, y dominios que solo responden a través de Cloudflare.

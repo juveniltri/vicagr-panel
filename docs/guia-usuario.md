@@ -48,8 +48,13 @@ Objetivo: entrar en el Panel y saber dónde está cada cosa.
 
 - **«Credenciales incorrectas»**: revisa el email. Tras 10 intentos fallidos en un minuto, el
   Panel bloquea los intentos desde tu conexión durante ese minuto.
-- **Te saca de la sesión sin motivo**: alguien ha cambiado tu contraseña o ha eliminado tu
-  usuario. Pide a otra persona del equipo que lo revise en Usuarios.
+- **Te saca de la sesión sin motivo**: alguien ha cambiado tu contraseña, ha eliminado tu
+  usuario o ha cambiado su vínculo con Pocket ID. Pide a otra persona del equipo que lo revise en
+  Usuarios. Las sesiones iniciadas con Pocket ID caducan a las 12 horas.
+- **«Tu cuenta de Pocket ID no está vinculada a este Panel»**: copia el identificador que aparece,
+  entra con tu contraseña y pégalo en **Usuarios → Pocket ID**.
+- **«No se pudo entrar con Pocket ID»**: entra con tu contraseña, que sigue funcionando siempre, y
+  avisa al administrador.
 
 ## 2. Dar de alta un Cliente y su primer Proyecto
 
@@ -549,6 +554,8 @@ Si aun así no se puede entrar al Panel, hay un **acceso de emergencia** que no 
 - Las personas que pueden entrar en el Panel: crear, editar, cambiar la contraseña y eliminar.
 - Al cambiar la contraseña de un usuario o eliminarlo, se cierran al momento sus sesiones
   abiertas.
+- Si el Panel tiene Pocket ID configurado, **Pocket ID** vincula el usuario con su cuenta: solo entra
+  con Pocket ID quien esté vinculado. Quitar o cambiar el vínculo cierra sus sesiones al momento.
 
 ## Novedades
 
