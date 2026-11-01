@@ -7,6 +7,7 @@ import {
   cambiarPasswordAction,
   crearUsuarioAction,
   eliminarUsuarioAction,
+  vincularOidcAction,
 } from "@/app/(panel)/actions";
 
 type Usuario = {
@@ -14,18 +15,22 @@ type Usuario = {
   email: string;
   nombre: string;
   creadoEn: Date;
+  oidcSub?: string | null;
 };
 
 type Vista =
   | { tipo: "lista" }
   | { tipo: "nuevo" }
   | { tipo: "editar"; usuario: Usuario }
-  | { tipo: "password"; usuario: Usuario };
+  | { tipo: "password"; usuario: Usuario }
+  | { tipo: "pocketId"; usuario: Usuario };
 
 export function GestionUsuarios({
   usuariosIniciales,
+  oidcActivo = false,
 }: {
   usuariosIniciales: Usuario[];
+  oidcActivo?: boolean;
 }) {
   const router = useRouter();
   const [vista, setVista] = useState<Vista>({ tipo: "lista" });
@@ -85,6 +90,19 @@ export function GestionUsuarios({
     );
   }
 
+  if (vista.tipo === "pocketId") {
+    return (
+      <VincularPocketIdForm
+        usuario={vista.usuario}
+        onCancel={() => setVista({ tipo: "lista" })}
+        onSuccess={() => {
+          setVista({ tipo: "lista" });
+          router.refresh();
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
       {error && (
@@ -114,6 +132,9 @@ export function GestionUsuarios({
                   </td>
                   <td className="px-4 py-3 font-body text-sm text-text-muted">
                     {u.email}
+                    {oidcActivo && u.oidcSub && (
+                      <span className="block text-xs">Pocket ID vinculado</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {confirmDeleteId === u.id ? (
@@ -153,6 +174,16 @@ export function GestionUsuarios({
                         >
                           Contraseña
                         </Btn>
+                        {oidcActivo && (
+                          <Btn
+                            onClick={() =>
+                              setVista({ tipo: "pocketId", usuario: u })
+                            }
+                            aria-label={`Pocket ID de ${u.nombre}`}
+                          >
+                            Pocket ID
+                          </Btn>
+                        )}
                         <Btn
                           onClick={() => setConfirmDeleteId(u.id)}
                           aria-label={`Eliminar ${u.nombre}`}
@@ -384,6 +415,80 @@ function CambiarPasswordForm({
         <Btn primary disabled={loading} aria-label="Cambiar contraseña">
           {loading ? "…" : "Cambiar"}
         </Btn>
+        <Btn onClick={onCancel} aria-label="Cancelar">
+          Cancelar
+        </Btn>
+      </div>
+    </form>
+  );
+}
+
+function VincularPocketIdForm({
+  usuario,
+  onCancel,
+  onSuccess,
+}: {
+  usuario: Usuario;
+  onCancel: () => void;
+  onSuccess: () => void;
+}) {
+  const [sub, setSub] = useState(usuario.oidcSub ?? "");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function guardar(valor: string | null) {
+    setLoading(true);
+    setError(null);
+    const result = await vincularOidcAction(usuario.id, valor);
+    if (result?.error) {
+      setError(result.error);
+      setLoading(false);
+      return;
+    }
+    onSuccess();
+  }
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void guardar(sub);
+      }}
+      className="flex flex-col gap-3 border border-border rounded-[var(--radius-md)] p-4"
+    >
+      <h2 className="font-display text-sm font-semibold text-text-primary">
+        Pocket ID — {usuario.nombre}
+      </h2>
+      <p className="font-body text-xs text-text-muted">
+        Entra con Pocket ID con esa cuenta: la pantalla de login te muestra el
+        identificador que hay que pegar aquí. Cambiar o quitar el vínculo cierra
+        las sesiones abiertas de este usuario.
+      </p>
+      {error && (
+        <p role="alert" className="font-body text-xs text-state-error">
+          {error}
+        </p>
+      )}
+      <Field
+        id="pi-sub"
+        label="Identificador en Pocket ID"
+        value={sub}
+        onChange={setSub}
+        required
+      />
+      <div className="flex gap-2">
+        <Btn primary disabled={loading} aria-label="Guardar vínculo">
+          {loading ? "…" : "Guardar"}
+        </Btn>
+        {usuario.oidcSub && (
+          <Btn
+            onClick={() => void guardar(null)}
+            disabled={loading}
+            aria-label="Quitar vínculo"
+          >
+            Quitar vínculo
+          </Btn>
+        )}
         <Btn onClick={onCancel} aria-label="Cancelar">
           Cancelar
         </Btn>

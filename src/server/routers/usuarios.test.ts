@@ -353,3 +353,87 @@ describe("usuarios.eliminar", () => {
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
+
+describe("usuarios.vincularOidc", () => {
+  const conVinculo = { ...mockUser, oidcSub: "sub-viejo" };
+  const llamar = (sub: string | null) =>
+    appRouter
+      .createCaller({ session: mockSession } as never)
+      .usuarios.vincularOidc({ id: "u1", sub });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.user.update).mockResolvedValue(mockUser as never);
+  });
+
+  it("el primer vínculo guarda el identificador sin cerrar sesiones", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      ...mockUser,
+      oidcSub: null,
+    } as never);
+
+    await llamar("  sub-1  ");
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { oidcSub: "sub-1" },
+    });
+  });
+
+  it.each([
+    ["sustituir", "sub-nuevo"],
+    ["quitar", null],
+  ])("%s un vínculo cierra las sesiones abiertas", async (_, sub) => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(conVinculo as never);
+
+    await llamar(sub);
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { oidcSub: sub, sesionesDesde: expect.any(Date) },
+    });
+  });
+
+  it("guardar el mismo identificador no cierra sesiones", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(conVinculo as never);
+
+    await llamar("sub-viejo");
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { oidcSub: "sub-viejo" },
+    });
+  });
+
+  it("rechaza un identificador vinculado a otro usuario", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser as never);
+    vi.mocked(prisma.user.update).mockRejectedValue({ code: "P2002" });
+
+    await expect(llamar("sub-1")).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("propaga otros errores de la BD", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser as never);
+    vi.mocked(prisma.user.update).mockRejectedValue(new Error("db"));
+
+    await expect(llamar("sub-1")).rejects.toThrow("db");
+  });
+
+  it("rechaza un usuario inexistente o un identificador vacío", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null as never);
+
+    await expect(llamar("s")).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(llamar("   ")).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("exige sesión", async () => {
+    vi.mocked(auth).mockResolvedValue(null as never);
+
+    await expect(
+      appRouter
+        .createCaller({ session: null } as never)
+        .usuarios.vincularOidc({ id: "u1", sub: "s" }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});

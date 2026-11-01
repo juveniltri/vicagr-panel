@@ -70,7 +70,7 @@ Después, «Tras la 2.4.0».
 
 - [ ] **2.5 — varios destinos a la vez (local + externo)**.
 - [ ] **Registro de actividad** — quién lanzó un deploy/rollback, borró o editó un proyecto o cambió variables (hoy solo `Deploy.origen`).
-- [ ] **Login con Pocket ID (después de la 2.4.0)** — gestor de usuarios del equipo, compartido por los Paneles de las VPS de desarrollo y producción, con passkeys. Instalarlo en la VPS de producción con dominio propio y registrar cada Panel como aplicación OIDC distinta (`client_id`, secreto y URL de retorno propios; grupos por entorno). Proveedor OIDC en NextAuth sin altas automáticas, con vínculo al usuario local por `sub`. Mantener el login local como respaldo (también para el acceso de emergencia). Decidir cómo se revoca el acceso: `sesionVigente` valida contra la BD del Panel, no contra Pocket ID, y las sesiones duran 7 días. Comprobar con una restauración real que sus datos entran en los backups de Proyectos. Solo para el equipo: los usuarios de los CRMs siguen en cada CRM.
+- [ ] **Login con Pocket ID** — hecho en `feature/pocket-id-fuentes`, sin mergear; guía en `production.md` § F. Falta probarlo en la VPS de desarrollo con HTTPS y dominios reales. Solo para el equipo: los usuarios de los CRMs siguen en cada CRM.
 - [ ] **2FA (TOTP)** en el login. Se puede omitir si Pocket ID cubre el acceso con passkeys, salvo para el login local de respaldo.
 - [ ] **Backups — más adelante**: cambiar la clave de cifrado, retención configurable y `restic check` periódico.
 - [ ] **Versiones mayores** en una rama propia: TypeScript 7, ESLint 10, Vitest 5, commitlint 21, jsdom 30.
