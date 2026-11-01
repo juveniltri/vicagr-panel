@@ -206,7 +206,7 @@ npm run guia             # regenera capturas y PDF de la guía (Docker, puertos 
 
 ```bash
 # Crear directorios persistentes
-mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/traefik/static /var/vicalba/repos
+mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/traefik/static /var/vicalba/repos /var/vicalba/backups
 # El panel corre como uid 1001 y escribe en ambas (deploys, config de Traefik, backups)
 chown -R 1001:1001 /var/vicalba
 
@@ -438,10 +438,10 @@ Ver `CONTEXT.md` para el glosario completo.
   - Versión 2.1.1 (`release/2.1.1`): webhooks de Discord (embed) y Slack (`{ text }`) con el motivo del rechazo en el error; sesiones invalidadas al eliminar el usuario o cambiar su contraseña (`sesionVigente`, `User.sesionesDesde`, 7 días); logs de contenedores limitados a 3 × 10 MB (`LIMITE_LOGS` en composes generados, override `<proyecto>.logging.yml` en compose de usuario, stack del panel); `docker image prune` + `builder prune --filter until=168h` tras cada deploy correcto; Prisma 7.10 alineado y dependencias menores; healthcheck del panel; `.gitattributes` (LF); Dependabot; Release automática al subir un tag (`release.yml` + `notasDeRelease`) (899 tests)
   - Versión 2.2.0 (`release/2.2.0`, PR #56 + #57): backups fase A (restic a S3/SFTP, copia diaria, restauración desde el Panel con copia previa, kit de recuperación, `docs/recuperacion.md`); guía de usuario (`docs/guia-usuario.md`, página `/guia`, PDF y capturas con `npm run guia`); arreglos de los filtros por nivel de los logs y del estado de certificados en instalaciones nuevas; `develop` y `master` protegidas (PR + 7 checks) con auto-merge (1105 tests)
   - Versión 2.3.0 (publicada el 16/10/2026): Proxy y servicios (acciones por Servicio, rutas múltiples, middlewares, Configuración → Proxy con vuelta atrás, modo Cloudflare). Pendiente en la VPS de desarrollo: verificar certificados reales con Cloudflare (DNS-01 con token y HTTP-01 tras el proxy naranja).
-- **En construcción:** 2.4.0 (`feature/2.4.0`, spec `docs/superpowers/specs/2026-10-28-2.4.0-backups-proyectos-cloudflare-design.md`):
-  backups de Proyectos (BDs Postgres/MySQL y carpetas/volúmenes de datos, pestaña Backups, restauración con copia previa,
-  cancelar, borrar copias al eliminar) y «Solo desde Cloudflare» por ruta; pendientes de la fase A resueltos. Hecho el
-  código y la documentación (`docs/recuperacion.md` «Datos de un Proyecto», guía, `production.md` § B2b); falta la
-  verificación real en la VPS de desarrollo, el CHANGELOG y la release.
+  - Versión 2.4.0 (`release/2.4.0`, spec `docs/superpowers/specs/2026-10-28-2.4.0-backups-proyectos-cloudflare-design.md`):
+    backups de Proyectos (BDs Postgres/MySQL y carpetas/volúmenes de datos, pestaña Backups, restauración con copia previa,
+    cancelar, borrar copias al eliminar), destino local y «Solo desde Cloudflare» por ruta; pendientes de la fase A resueltos
+    (1586 tests). Pendiente en la VPS de desarrollo: verificar los backups de Proyectos (`production.md` § B2b) y certificados reales con Cloudflare.
+- **En construcción:** —
 - **Bloqueado / pendiente:** ver `docs/roadmap.md`
-- **Próximo hito:** release 2.4.0; después E2E, alerta de disco, CSP estricta, cobertura y fuentes locales (ver `docs/roadmap.md`)
+- **Próximo hito:** verificar la 2.4.0 en la VPS de desarrollo; después E2E, alerta de disco, CSP estricta, cobertura, fuentes locales y login con Pocket ID (ver `docs/roadmap.md`)

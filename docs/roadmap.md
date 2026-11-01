@@ -12,10 +12,10 @@ Si un tag apunta a un commit antiguo, crearlo con `git tag <tag> <sha>` + `git p
 
 `develop` y `master` están protegidas (PR y los 7 checks de CI); `gh pr merge <n> --auto --merge` mergea al pasar la CI y GitHub borra la rama al mergear.
 
-Publicada la **2.3.0** (16/10/2026, Proxy y servicios). Ahora: desplegarla en la VPS de desarrollo y después en
-producción con `production.md` § B3 (y § B4 si falta la 2.2.0); a partir del 18/10/2026, cuando Cloudflare dé acceso,
-verificar el modo Cloudflare en la VPS de desarrollo con `production.md` § C. Si falla algo: hotfix 2.3.1 desde `master`.
-Después, la 2.4.0 (empezar por las fuentes locales: el build falla a veces al descargar las de Google).
+**2.4.0** (01/11/2026, backups de Proyectos y «Solo desde Cloudflare»). Ahora: desplegarla en la VPS de desarrollo y
+después en producción con `production.md` § B2b, y verificar allí lo que sigue pendiente (ver «Sin verificar en real» y
+el modo Cloudflare con `production.md` § C). Si falla algo: hotfix 2.4.1 desde `master`.
+Después, «Tras la 2.4.0» (empezar por las fuentes locales: el build falla a veces al descargar las de Google).
 
 ### 2.2.0 — backups, fase A (PR #56) y guía de usuario (PR #57) — publicada
 
@@ -45,6 +45,9 @@ Después, la 2.4.0 (empezar por las fuentes locales: el build falla a veces al d
   - [x] la primera comprobación del programador es a los 60 s del arranque;
   - [x] no se impide borrar una credencial SSH en uso por los backups (la copia queda en error y avisa);
   - [x] si el destino cae a mitad de una copia (tras la comprobación inicial), restic reintenta hasta ~15 min.
+
+### Tras la 2.4.0
+
 - [ ] **Tests E2E** (ver Técnico).
 - [ ] **Alerta de disco** — las métricas de la VPS ya existen; avisar por los canales de notificación al pasar del 85 %.
 - [ ] **CSP estricta** — hoy permite `'unsafe-eval'` y `'unsafe-inline'` en scripts. Ver qué lo exige (Monaco, script anti-FOUC) y pasar a nonces.
@@ -59,7 +62,7 @@ Después, la 2.4.0 (empezar por las fuentes locales: el build falla a veces al d
 - [ ] **Backups — listado y API**: `copiasProyecto` ofrece como restaurables elementos que fallaron (el servidor los rechaza) y `claveDeRuta` rompe el listado con una ruta desconocida; `elementosProyecto` expone `contenedorId` y rutas del host; fallo de detección como `INTERNAL_SERVER_ERROR`; webhook mixto sin log y carrera que da 500 en vez de 409.
 - [ ] **Backups — seguridad (para el próximo `/security-review`)**: colisión de nombres de proyecto compose `a-b`/`c` frente a `a`/`b-c` (con backups, una restauración podría vaciar un volumen etiquetado del otro); el stderr de psql/mysql en avisos podría llevar valores de filas; `filtrarRolesSql` quita `GRANT <superusuario> TO otro` e ignora `SECURITY LABEL ON ROLE`; contenedores auxiliares con `--network none`.
 - [ ] **Backups — UI**: el interruptor no se deshabilita al restaurar; estado local sin resincronizar tras refrescar; modal de restauración sin Escape/foco inicial/trampa de foco; `aria-label` fijo en «Restaurar»; ids con espacios; `obtenerConfiguracion` sin `catch` en la página; aviso neutro de `CopiasBackup` decidido por prefijo del mensaje; enlace «Se restaura a mano» a `/guia` en vez de `docs/recuperacion.md`.
-- [ ] **Proxy**: el router `-www` no lleva el `ipAllowList` de «Solo desde Cloudflare» (responde 301, no llega a la app); `proxy.aplicar` cuenta las rutas fuera de transacción.
+- [ ] **Proxy**: el router `-www` no lleva el `ipAllowList` de «Solo desde Cloudflare» (siempre responde 301 y apunta a `noop@internal`, no llega a la app); `proxy.aplicar` cuenta las rutas fuera de transacción.
 - [ ] **Previo a la 2.4.0**: eliminar un Proyecto deja sus contenedores en marcha; eliminar el último Proyecto de un Cliente da 500 (Traefik sigue conectado a la red).
 - [ ] **Sin verificar en real**: el ciclo diario completo y cancelar una restauración.
 
@@ -67,7 +70,8 @@ Después, la 2.4.0 (empezar por las fuentes locales: el build falla a veces al d
 
 - [ ] **2.5 — varios destinos a la vez (local + externo)**.
 - [ ] **Registro de actividad** — quién lanzó un deploy/rollback, borró o editó un proyecto o cambió variables (hoy solo `Deploy.origen`).
-- [ ] **2FA (TOTP)** en el login.
+- [ ] **Login con Pocket ID (después de la 2.4.0)** — gestor de usuarios del equipo, compartido por los Paneles de las VPS de desarrollo y producción, con passkeys. Instalarlo en la VPS de producción con dominio propio y registrar cada Panel como aplicación OIDC distinta (`client_id`, secreto y URL de retorno propios; grupos por entorno). Proveedor OIDC en NextAuth sin altas automáticas, con vínculo al usuario local por `sub`. Mantener el login local como respaldo (también para el acceso de emergencia). Decidir cómo se revoca el acceso: `sesionVigente` valida contra la BD del Panel, no contra Pocket ID, y las sesiones duran 7 días. Comprobar con una restauración real que sus datos entran en los backups de Proyectos. Solo para el equipo: los usuarios de los CRMs siguen en cada CRM.
+- [ ] **2FA (TOTP)** en el login. Se puede omitir si Pocket ID cubre el acceso con passkeys, salvo para el login local de respaldo.
 - [ ] **Backups — más adelante**: cambiar la clave de cifrado, retención configurable y `restic check` periódico.
 - [ ] **Versiones mayores** en una rama propia: TypeScript 7, ESLint 10, Vitest 5, commitlint 21, jsdom 30.
 
@@ -103,3 +107,5 @@ Después, la 2.4.0 (empezar por las fuentes locales: el build falla a veces al d
 ## Descartado
 
 <!-- Ideas que se han considerado y descartado, con motivo -->
+
+- **Keycloak como gestor único de usuarios de todas las apps y CRMs** (01/11/2026) — excesivo para 2-3 CRMs y unos 5 clientes: los CRMs crean sus propios usuarios y habría que pasar esa gestión por su API, además de operar un servicio crítico para todos los clientes. Replantearlo si un usuario externo necesita una sola cuenta en varias apps, un cliente exige SSO con su directorio o SAML, o crece mucho el número de CRMs y clientes.

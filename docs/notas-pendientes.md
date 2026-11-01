@@ -1,10 +1,9 @@
 # Notas pendientes
 
-## Estado actual (octubre 2026)
+## Estado actual (noviembre 2026)
 
-Todo lo descrito en `CLAUDE.md` § "Estado actual del proyecto" está en master. La 2.3.0
-(publicada el 16/10/2026) está pendiente de desplegar: primero en la VPS de desarrollo y después en
-producción, con `production.md` § B3 (y § B4 si la VPS no tiene aún la 2.2.0). El modo Cloudflare
+Todo lo descrito en `CLAUDE.md` § "Estado actual del proyecto" está en master. La 2.4.0 se despliega
+primero en la VPS de desarrollo y después en producción, con `production.md` § B2b. El modo Cloudflare
 está en pruebas: verificarlo con `production.md` § C en la VPS de desarrollo antes de usarlo en
 producción. Este fichero recoge también la deuda técnica conocida y las decisiones pendientes.
 

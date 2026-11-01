@@ -145,7 +145,12 @@ export function encadenar(
     b.proc.stdin.on("error", () => {});
     a.proc.stdin.end();
     // Nobody reads origen any more: drain it so it can finish instead of blocking.
-    void b.terminado.then(() => a.proc.stdout.resume());
+    // Unpipe first: a write to the closed stdin would pause origen again, for a
+    // drain that never comes.
+    void b.terminado.then(() => {
+      a.proc.stdout.unpipe(b.proc.stdin);
+      a.proc.stdout.resume();
+    });
     void Promise.all([a.terminado, b.terminado]).then(([ra, rb]) => {
       const fallo: [Proceso, Resultado, string] | null =
         ra.codigo !== 0 || ra.cancelado

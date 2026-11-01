@@ -307,13 +307,46 @@ describe("generarConfigProyecto", () => {
       expect(redireccion?.middlewares).toHaveLength(1);
       expect(config.http.middlewares?.[redireccion!.middlewares![0]]).toEqual({
         redirectRegex: {
-          regex: `^https?://${origen.replace(/\./g, "\\.")}/(.*)`,
+          regex: "^https?://[^/]+/(.*)",
           replacement: `https://${destino}/\${1}`,
           permanent: true,
         },
       });
     },
   );
+
+  it("el router de la redirección nunca llega al Servicio, aunque la ruta tenga protección", () => {
+    const { config } = generar([
+      ruta({
+        dominio: "example.com",
+        redireccionWww: "a_raiz",
+        middlewares: { ipPermitidas: ["203.0.113.7"] },
+      }),
+    ]);
+
+    const redireccion = Object.values(config.http.routers).find(
+      (r) => r.rule === "Host(`www.example.com`)",
+    );
+    expect(redireccion?.service).toBe("noop@internal");
+  });
+
+  it.each([
+    "www.example.com",
+    "WWW.example.com",
+    "www.example.com:443",
+    "www.example.com.",
+  ])("redirige con Host %s, que el router también acepta", (host) => {
+    const { config } = generar([
+      ruta({ dominio: "example.com", redireccionWww: "a_raiz" }),
+    ]);
+
+    const redireccion = Object.values(config.http.middlewares ?? {}).find(
+      (m) => "redirectRegex" in m,
+    ) as { redirectRegex: { regex: string } };
+    expect(`https://${host}/a?b=1`).toMatch(
+      new RegExp(redireccion.redirectRegex.regex),
+    );
+  });
 });
 
 describe("solo desde Cloudflare", () => {
