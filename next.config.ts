@@ -20,9 +20,9 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "style-src 'self' 'unsafe-inline'",
       "img-src 'self' blob: data:",
-      "font-src 'self' data: https://fonts.gstatic.com",
+      "font-src 'self' data:",
       // SSE para logs en tiempo real — necesita connect-src 'self'
       "connect-src 'self'",
       // Monaco Editor usa blob: para sus web workers internos

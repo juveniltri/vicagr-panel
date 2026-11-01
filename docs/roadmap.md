@@ -15,7 +15,7 @@ Si un tag apunta a un commit antiguo, crearlo con `git tag <tag> <sha>` + `git p
 **2.4.0** (01/11/2026, backups de Proyectos y «Solo desde Cloudflare»). Ahora: desplegarla en la VPS de desarrollo y
 después en producción con `production.md` § B2b, y verificar allí lo que sigue pendiente (ver «Sin verificar en real» y
 el modo Cloudflare con `production.md` § C). Si falla algo: hotfix 2.4.1 desde `master`.
-Después, «Tras la 2.4.0» (empezar por las fuentes locales: el build falla a veces al descargar las de Google).
+Después, «Tras la 2.4.0».
 
 ### 2.2.0 — backups, fase A (PR #56) y guía de usuario (PR #57) — publicada
 
@@ -53,7 +53,7 @@ Después, «Tras la 2.4.0» (empezar por las fuentes locales: el build falla a v
 - [ ] **CSP estricta** — hoy permite `'unsafe-eval'` y `'unsafe-inline'` en scripts. Ver qué lo exige (Monaco, script anti-FOUC) y pasar a nonces.
 - [ ] **Cobertura según la regla 100/80** — los umbrales de `vitest.config.ts` son una lista de ficheros; `src/lib/sesion.ts` y `src/lib/compose` (93 % de ramas por `puertoContenedorDe`) no están. Completar tests y añadirlos.
 - [ ] **Scripts muertos** — `test:integration` apunta a un `vitest.integration.config.ts` que no existe y `test:e2e` a Playwright, sin instalar. Se resuelve con los E2E.
-- [ ] **Fuentes locales** — `next/font/google` descarga las fuentes en cada build; si Google falla, falla el build (pasó en el CI del #47) y también el de la imagen en la VPS. Pasar a `next/font/local`.
+- [x] **Fuentes locales** — `next/font/local` con los ficheros en `src/app/fonts/`; el build ya no depende de Google.
 
 ### Pendientes de la revisión de la 2.4.0 (no bloquean)
 
