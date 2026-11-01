@@ -184,16 +184,33 @@ describe("destino que no lee su entrada", () => {
     ).resolves.toBe("");
   });
 
-  it("encadenar no revienta si el destino termina sin leer", async () => {
-    await expect(
-      encadenar(
-        {
-          comando: node,
-          args: ["-e", "process.stdout.write('x'.repeat(1024*1024))"],
-        },
-        sale,
-        {},
+  // Several at once: the hang depended on the order of destino's close and the
+  // EPIPE on its stdin, and a lone run rarely hit it.
+  it("encadenar no revienta ni se cuelga si el destino termina sin leer", async () => {
+    const origen = {
+      comando: node,
+      args: ["-e", "process.stdout.write('x'.repeat(1024*1024))"],
+    };
+    const salidas = await Promise.all(
+      Array.from({ length: 8 }, () => encadenar(origen, sale, {})),
+    );
+    expect(salidas).toEqual(Array(8).fill(""));
+  });
+
+  it("encadenar informa del fallo del destino que muere sin leer, sin colgarse", async () => {
+    const origen = {
+      comando: node,
+      args: ["-e", "process.stdout.write('x'.repeat(1024*1024))"],
+    };
+    const muere = { comando: node, args: ["-e", "process.exit(7)"] };
+    const errores = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        encadenar(origen, muere, {}).catch((e: unknown) => e),
       ),
-    ).resolves.toBe("");
+    );
+    for (const err of errores) {
+      expect(err).toBeInstanceOf(ErrorProceso);
+      expect((err as ErrorProceso).codigo).toBe(7);
+    }
   });
 });
