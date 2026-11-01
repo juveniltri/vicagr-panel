@@ -70,7 +70,7 @@ Después, «Tras la 2.4.0».
 
 - [ ] **2.5 — varios destinos a la vez (local + externo)**.
 - [ ] **Registro de actividad** — quién lanzó un deploy/rollback, borró o editó un proyecto o cambió variables (hoy solo `Deploy.origen`).
-- [ ] **Login con Pocket ID** — hecho en `feature/pocket-id-fuentes`, sin mergear; guía en `production.md` § F. Falta probarlo en la VPS de desarrollo con HTTPS y dominios reales. Solo para el equipo: los usuarios de los CRMs siguen en cada CRM.
+- [x] **Login con Pocket ID** — 2.5.0; guía en `production.md` § F. Solo para el equipo: los usuarios de los CRMs siguen en cada CRM.
 - [ ] **2FA (TOTP)** en el login. Se puede omitir si Pocket ID cubre el acceso con passkeys, salvo para el login local de respaldo.
 - [ ] **Backups — más adelante**: cambiar la clave de cifrado, retención configurable y `restic check` periódico.
 - [ ] **Versiones mayores** en una rama propia: TypeScript 7, ESLint 10, Vitest 5, commitlint 21, jsdom 30.

@@ -258,6 +258,21 @@ docker compose up -d --build
 Los Proyectos redesplegados con la versión nueva siguen funcionando; vuelve a desplegarlos si
 algo de su configuración depende de la versión anterior.
 
+### B2a. A la 2.5.0 (login con Pocket ID y fuentes locales)
+
+Si la VPS está en la **2.3.x** o anterior, haz antes § B2b, y también § B3 y § B4 si le corresponden:
+sus pasos «antes de actualizar» no se aplican solos.
+
+**Actualizar:** § B1. La migración añade una columna a los usuarios y se aplica sola al arrancar.
+No hace falta ninguna variable nueva: sin `OIDC_*`, el Panel sigue entrando solo con contraseña.
+
+**Activar Pocket ID (opcional):** § F. Si ya está instalado, basta con § F7 en este Panel.
+
+**Comprobaciones:**
+
+1. `curl https://panel.tudominio.com/api/health` da `"version":"2.5.0"`.
+2. El login con contraseña sigue funcionando y las fuentes se ven igual que antes.
+
 ### B2b. A la 2.4.0 (backups de Proyectos y «Solo desde Cloudflare»)
 
 (Su número es B2b para no renumerar los apartados que citan otras notas y versiones.) Si la VPS
@@ -505,13 +520,39 @@ su configuración por defecto). Comprueba que existe `/var/vicalba/traefik/stati
 El directorio es de `root`: `chown 1001:1001 /var/vicalba/traefik/static` y
 `docker compose restart panel`.
 
+### El Panel no arranca: `Bind for … :3000 failed: port is already allocated`
+
+Otro contenedor publica el puerto 3000 de la VPS (`docker ps | grep 3000`). Los Proyectos no
+necesitan publicarlo, porque Traefik les llega por la red de Docker: lo más limpio es quitar ese
+`ports` del Proyecto. Si no se puede ahora, mueve el acceso de emergencia del Panel con un
+`docker-compose.override.yml` en `/opt/vicalba-app`, y usa ese puerto en el túnel de § D:
+
+```yaml
+services:
+  panel:
+    ports: !override
+      - "127.0.0.1:3001:3000"
+```
+
 ### Let's Encrypt no emite un certificado
 
 - El DNS resuelve a la IP de la VPS: `dig +short <dominio>`.
 - Los puertos 80 y 443 están abiertos en el firewall del proveedor.
 - Si el dominio va con la nube naranja de Cloudflare, la ruta tiene que estar marcada «Detrás de
-  Cloudflare» (§ C3).
+  Cloudflare» (§ C3). `Cannot negotiate ALPN protocol` en el log significa que el dominio pasa por
+  Cloudflare sin estar marcada: márcala o déjalo en gris.
 - Errores en `docker logs traefik` (busca `acme`).
+- Traefik puede no reintentar tras corregir el DNS y seguir sirviendo `TRAEFIK DEFAULT CERT`.
+  `docker compose restart panel` provoca otro intento sin cortar los Proyectos.
+
+### Un dominio detrás de Cloudflare responde `404 page not found`, y la VPS responde bien
+
+Cloudflare está enviando el dominio a otro servidor, por ejemplo la VPS de desarrollo, cuyo Traefik
+no tiene esa ruta. Compruébalo saltándote Cloudflare y, si responde bien, corrige la IP del registro DNS:
+
+```bash
+curl -sk -o /dev/null -w '%{http_code}\n' --resolve <dominio>:443:<IP_DE_LA_VPS> https://<dominio>/
+```
 
 ### Un dominio responde 502
 
@@ -551,7 +592,7 @@ CRMs siguen en cada CRM.
 - **Dónde:** una sola instalación, en la **VPS de producción**. El Panel de desarrollo entra contra
   esa misma instalación. Nunca al revés: se puede romper la VPS de desarrollo sin perder el acceso.
 - **Qué necesita cada parte:** instalarlo (§ F1–F5) funciona con cualquier versión del Panel desde
-  la 2.3.0. Conectar el Panel (§ F6–F8) necesita la versión con login por Pocket ID.
+  la 2.3.0. Conectar el Panel (§ F6–F8) necesita la 2.5.0.
 - **Respaldo:** el usuario y la contraseña de cada Panel siguen funcionando siempre. No los borres
   ni los olvides: son la forma de entrar si Pocket ID cae, y la única por el acceso de emergencia (§ D).
 
@@ -559,7 +600,9 @@ CRMs siguen en cada CRM.
 
 1. Elige un dominio propio, por ejemplo `id.tudominio.com`, y apunta su DNS a la IP de la VPS de
    producción, en gris (sin proxy) si usas Cloudflare. **Las passkeys quedan ligadas a ese dominio:
-   si lo cambias más adelante, hay que volver a registrarlas.**
+   si lo cambias más adelante, hay que volver a registrarlas.** Déjalo en gris **antes** de crear la
+   ruta de § F2: las passkeys exigen HTTPS con un certificado válido, y detrás del proxy Traefik no
+   lo obtiene.
 2. Genera los dos secretos y **guárdalos en vuestro gestor de contraseñas**:
 
    ```bash
@@ -667,9 +710,7 @@ cuenta de todo el equipo.
 
 ### F6. Instalar la versión del Panel
 
-Sigue § B1 con la versión que incluye el login por Pocket ID. Mientras no se publique, en la VPS de
-desarrollo se puede probar la rama (`git fetch && git checkout feature/pocket-id-fuentes`, sin más
-cambios en § B1). La migración añade una columna que la versión anterior ignora.
+Actualiza cada Panel a la **2.5.0** siguiendo § B2a.
 
 ### F7. Conectar cada Panel
 
@@ -733,5 +774,9 @@ cambia la versión de la imagen en el editor de compose y haz **Deploy**.
   `https://<dominio del Panel>/api/auth/callback/pocket-id`.
 - **Pocket ID te rechaza al volver a un Panel concreto:** esa persona no está en el grupo de esa
   aplicación (§ F4).
-- **El navegador no ofrece la passkey:** las passkeys exigen HTTPS y el dominio con el que se
-  registraron.
+- **Al añadir la passkey dice que se ha cancelado, o el navegador no la ofrece:** las passkeys exigen
+  HTTPS con un certificado válido y el dominio con el que se registraron. Comprueba que el candado
+  no da ningún aviso (§ E, «Let's Encrypt no emite un certificado») y que `POCKET_ID_URL` usa `https`.
+  Si el servidor está bien, prueba otro navegador o regístrala desde el móvil, abriendo allí Pocket ID:
+  el aviso «Passkey no encontrada» solo indica que aún no tienes ninguna.
+- **Te has quedado sin sesión antes de registrar la primera passkey:** usa el comando de § F8.
