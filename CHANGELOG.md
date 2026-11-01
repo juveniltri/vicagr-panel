@@ -5,6 +5,56 @@ Novedades. Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES
 cada versión con su fecha, un resumen de una línea y los apartados Novedades,
 Correcciones y Seguridad.
 
+## [2.4.0] - 2026-11-01
+
+Copias y restauración de las bases de datos y los datos de cada Proyecto, y dominios que solo responden a través de Cloudflare.
+
+### Novedades
+
+- **Pestaña Backups** en cada Proyecto: detecta sus bases de datos (Postgres, PostGIS, Timescale,
+  MySQL y MariaDB) y sus carpetas y volúmenes de datos, y explica lo que no copia y por qué. Cada
+  elemento se puede desmarcar, y el Proyecto entero se puede sacar de la copia diaria.
+- **Copia diaria y «Copia ahora»** de los Proyectos, cancelable. Se conservan 7 copias diarias y
+  4 semanales por elemento; las manuales y las previas a restaurar, 30 días.
+- **Restaurar un Proyecto** desde el Panel, eligiendo qué elementos devolver. Antes se hace una
+  copia de lo que se va a sustituir, y durante la restauración el Proyecto rechaza deploys y
+  acciones. Si falla o se cancela, los Servicios quedan parados y se avisa por los canales.
+- **Al eliminar un Proyecto**, «Borrar también sus copias ahora». Si no se marca, las copias se
+  purgan a los 30 días, salvo que haya dudas sobre lo que se copiaba.
+- **Destino de backups «Local (en la VPS)»**, para usarlo mientras no haya uno externo. Si se
+  pierde la VPS o su disco, se pierden también las copias: el Panel lo recuerda con un aviso.
+- **Solo desde Cloudflare** por dominio (el modo Cloudflare sigue en pruebas: falta comprobarlo
+  con certificados reales): responde 403 a lo que no llegue por los servidores de Cloudflare, así
+  nadie se salta la nube naranja yendo directo a la IP de la VPS.
+
+### Correcciones
+
+- Si el destino de backups cae a mitad de una copia, se reintenta durante unos 15 minutos.
+- Si falla la restauración de la configuración de Traefik, ya no se pierde la que estaba en uso.
+- La hora y el interruptor de la copia programada se mantienen al día tras refrescar la página.
+- Sin destino configurado, «Copias disponibles» lo avisa en rojo.
+- El Panel impide borrar una credencial SSH que usan los backups.
+
+### Seguridad
+
+- En los dominios con redirección `www`, una petición con el `Host` en mayúsculas, con puerto o con
+  punto final llegaba a la app sin pasar por su protección (usuario y contraseña, IPs permitidas,
+  límites) y sin respetar su path. Afecta a la 2.3.0: ahora siempre recibe la redirección.
+- Next.js 16.4.3 corrige una ejecución remota de código en funciones `use cache` y un bloqueo del
+  servicio con Server Actions; nodemailer 10.2 corrige tres fallos al interpretar direcciones.
+- Host y usuario del destino SFTP ya no admiten un `-` inicial, que `ssh` leería como una opción.
+
+### Al actualizar
+
+- Levanta el stack completo: `git pull && docker compose up -d --build`. El Panel recibe un
+  montaje nuevo y las migraciones se aplican solas. No hay variables nuevas en el `.env`.
+- Para el destino local, crea antes la carpeta:
+  `mkdir -p /var/vicalba/backups && chown 1001:1001 /var/vicalba/backups`.
+- La primera copia diaria incluye todos los Proyectos con contenedores: puede tardar horas y ocupa
+  espacio en el destino. Comprueba antes que hay sitio y desmarca en cada Proyecto lo que no quieras copiar.
+- Los dominios que ya estén detrás de Cloudflare no cambian: «Solo desde Cloudflare» se activa a mano.
+- Detalle paso a paso en `production.md`, § B2b.
+
 ## [2.3.0] - 2026-10-16
 
 Varios dominios por Proyecto con su protección, la configuración de Traefik editable desde el Panel y acciones sobre cada Servicio.
@@ -58,7 +108,7 @@ Varios dominios por Proyecto con su protección, la configuración de Traefik ed
   la pestaña Dominios.
 - Redespliega los Proyectos Dockerfile, Node.js e imagen: dejan de responder en `IP:puerto` y los
   de tipo imagen pasan a conectarse a la red del Cliente.
-- Detalle paso a paso en `docs/notas-pendientes.md`, «Operación al desplegar la 2.3.0».
+- Detalle paso a paso en `production.md`, § B3.
 
 ## [2.2.0] - 2026-10-14
 
@@ -119,7 +169,7 @@ Discord vuelve a recibir los avisos de deploy, el disco de la VPS deja de llenar
 - La migración de base de datos se aplica sola al arrancar el panel.
 - Todos los usuarios tendrán que volver a iniciar sesión una vez.
 - Para liberar ya el espacio ocupado y aplicar el límite de logs a Traefik, PostgreSQL y los
-  proyectos existentes, sigue los pasos de `docs/notas-pendientes.md`.
+  proyectos existentes, sigue los pasos de `production.md`, § B5.
 
 ## [2.1.0] - 2026-10-14
 

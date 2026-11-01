@@ -12,10 +12,10 @@ Si un tag apunta a un commit antiguo, crearlo con `git tag <tag> <sha>` + `git p
 
 `develop` y `master` están protegidas (PR y los 7 checks de CI); `gh pr merge <n> --auto --merge` mergea al pasar la CI y GitHub borra la rama al mergear.
 
-Ahora: la 2.3.0 está completa en `feature/2.3.0` (PR a `develop`). Antes de publicarla: verificar en la VPS de desarrollo
-los certificados reales con Cloudflare (punto 7 de «Operación al desplegar la 2.3.0» en `docs/notas-pendientes.md`), y en la
-release el CHANGELOG con `### Al actualizar` (directorio `static/`, stack completo, puertos ya no publicados). Si la 2.2.0
-sigue sin desplegarse en la VPS, desplegarla antes o hacer las dos operaciones seguidas.
+**2.4.0** (01/11/2026, backups de Proyectos y «Solo desde Cloudflare»). Ahora: desplegarla en la VPS de desarrollo y
+después en producción con `production.md` § B2b, y verificar allí lo que sigue pendiente (ver «Sin verificar en real» y
+el modo Cloudflare con `production.md` § C). Si falla algo: hotfix 2.4.1 desde `master`.
+Después, «Tras la 2.4.0» (empezar por las fuentes locales: el build falla a veces al descargar las de Google).
 
 ### 2.2.0 — backups, fase A (PR #56) y guía de usuario (PR #57) — publicada
 
@@ -35,16 +35,19 @@ sigue sin desplegarse en la VPS, desplegarla antes o hacer las dos operaciones s
 
 ### 2.4.0
 
-- [ ] **Backups — fase B (volúmenes)** de los Proyectos.
-- [ ] **Backups — fase C (BDs de Clientes)**: detección, dump lógico y restauración.
-- [ ] **Backups — pendientes de la fase A** (menores de la revisión y de la verificación real):
-  - al restaurar Traefik se borra `dynamic/` antes de copiar (hueco breve de rutas; si falta el origen, queda vacía);
-  - host y usuario SFTP admiten un `-` inicial (opciones de `ssh`; sin ejecución de código);
-  - el interruptor y la hora de la programación no se resincronizan tras refrescar, y la hora no se bloquea mientras se guarda;
-  - sin destino configurado, «Copias disponibles» muestra el aviso en rojo;
-  - la primera comprobación del programador es a los 60 s del arranque;
-  - no se impide borrar una credencial SSH en uso por los backups (la copia queda en error y avisa);
-  - si el destino cae a mitad de una copia (tras la comprobación inicial), restic reintenta hasta ~15 min.
+- [x] **Backups — fase B (volúmenes)** de los Proyectos (volúmenes con nombre y carpetas de datos; restauración desde el Panel; `.panel/` a mano).
+- [x] **Backups — fase C (BDs de Clientes)**: detección, dump lógico y restauración (Postgres y MySQL/MariaDB). Falta la verificación real en la VPS de desarrollo.
+- [x] **Backups — pendientes de la fase A** (menores de la revisión y de la verificación real):
+  - [x] al restaurar Traefik se borra `dynamic/` antes de copiar (hueco breve de rutas; si falta el origen, queda vacía);
+  - [x] host y usuario SFTP admiten un `-` inicial (opciones de `ssh`; sin ejecución de código);
+  - [x] el interruptor y la hora de la programación no se resincronizan tras refrescar, y la hora no se bloquea mientras se guarda;
+  - [x] sin destino configurado, «Copias disponibles» muestra el aviso en rojo;
+  - [x] la primera comprobación del programador es a los 60 s del arranque;
+  - [x] no se impide borrar una credencial SSH en uso por los backups (la copia queda en error y avisa);
+  - [x] si el destino cae a mitad de una copia (tras la comprobación inicial), restic reintenta hasta ~15 min.
+
+### Tras la 2.4.0
+
 - [ ] **Tests E2E** (ver Técnico).
 - [ ] **Alerta de disco** — las métricas de la VPS ya existen; avisar por los canales de notificación al pasar del 85 %.
 - [ ] **CSP estricta** — hoy permite `'unsafe-eval'` y `'unsafe-inline'` en scripts. Ver qué lo exige (Monaco, script anti-FOUC) y pasar a nonces.
@@ -52,11 +55,24 @@ sigue sin desplegarse en la VPS, desplegarla antes o hacer las dos operaciones s
 - [ ] **Scripts muertos** — `test:integration` apunta a un `vitest.integration.config.ts` que no existe y `test:e2e` a Playwright, sin instalar. Se resuelve con los E2E.
 - [ ] **Fuentes locales** — `next/font/google` descarga las fuentes en cada build; si Google falla, falla el build (pasó en el CI del #47) y también el de la imagen en la VPS. Pasar a `next/font/local`.
 
+### Pendientes de la revisión de la 2.4.0 (no bloquean)
+
+- [ ] **Backups — robustez**: `encadenar` no mata `restic dump` si el destino (`tar`/`psql`) muere pronto; `RESTIC_PROGRESS_FPS=0.2` en la copia y restauración del Panel (hoy ~12 KB/s de estado en memoria); `eliminarAuxiliar` sin timeout; retención y poda sin límite de tiempo; un `forget` fallido corta los demás; `cerrarFila` no cierra la fila si falla el barrido; si falla el revert de `lanzarDeploy` queda «deploying»; si falla `cerrarPrevia` o el update `exito` la fila de restauración queda `en_curso`.
+- [ ] **Backups — avisos e historial**: resumen del último ciclo diario en Configuración → Backups (pedido en el diseño); una cancelación del usuario también avisa como fallo; «Copia ahora» no avisa si falla `cerrarFila`; la purga al eliminar solo se registra en el log; la restauración del Panel marca `exito` aunque Traefik quede a medias; mensaje genérico si el Panel se reinicia a mitad de una restauración.
+- [ ] **Backups — listado y API**: `copiasProyecto` ofrece como restaurables elementos que fallaron (el servidor los rechaza) y `claveDeRuta` rompe el listado con una ruta desconocida; `elementosProyecto` expone `contenedorId` y rutas del host; fallo de detección como `INTERNAL_SERVER_ERROR`; webhook mixto sin log y carrera que da 500 en vez de 409.
+- [ ] **Backups — seguridad (para el próximo `/security-review`)**: colisión de nombres de proyecto compose `a-b`/`c` frente a `a`/`b-c` (con backups, una restauración podría vaciar un volumen etiquetado del otro); el stderr de psql/mysql en avisos podría llevar valores de filas; `filtrarRolesSql` quita `GRANT <superusuario> TO otro` e ignora `SECURITY LABEL ON ROLE`; contenedores auxiliares con `--network none`.
+- [ ] **Backups — UI**: el interruptor no se deshabilita al restaurar; estado local sin resincronizar tras refrescar; modal de restauración sin Escape/foco inicial/trampa de foco; `aria-label` fijo en «Restaurar»; ids con espacios; `obtenerConfiguracion` sin `catch` en la página; aviso neutro de `CopiasBackup` decidido por prefijo del mensaje; enlace «Se restaura a mano» a `/guia` en vez de `docs/recuperacion.md`.
+- [ ] **Proxy**: el router `-www` no lleva el `ipAllowList` de «Solo desde Cloudflare» (siempre responde 301 y apunta a `noop@internal`, no llega a la app); `proxy.aplicar` cuenta las rutas fuera de transacción.
+- [ ] **Previo a la 2.4.0**: eliminar un Proyecto deja sus contenedores en marcha; eliminar el último Proyecto de un Cliente da 500 (Traefik sigue conectado a la red).
+- [ ] **Sin verificar en real**: el ciclo diario completo y cancelar una restauración.
+
 ### Más adelante
 
+- [ ] **2.5 — varios destinos a la vez (local + externo)**.
 - [ ] **Registro de actividad** — quién lanzó un deploy/rollback, borró o editó un proyecto o cambió variables (hoy solo `Deploy.origen`).
-- [ ] **2FA (TOTP)** en el login.
-- [ ] **Backups — más adelante**: cambiar la clave de cifrado, varios destinos a la vez, retención configurable y `restic check` periódico.
+- [ ] **Login con Pocket ID (después de la 2.4.0)** — gestor de usuarios del equipo, compartido por los Paneles de las VPS de desarrollo y producción, con passkeys. Instalarlo en la VPS de producción con dominio propio y registrar cada Panel como aplicación OIDC distinta (`client_id`, secreto y URL de retorno propios; grupos por entorno). Proveedor OIDC en NextAuth sin altas automáticas, con vínculo al usuario local por `sub`. Mantener el login local como respaldo (también para el acceso de emergencia). Decidir cómo se revoca el acceso: `sesionVigente` valida contra la BD del Panel, no contra Pocket ID, y las sesiones duran 7 días. Comprobar con una restauración real que sus datos entran en los backups de Proyectos. Solo para el equipo: los usuarios de los CRMs siguen en cada CRM.
+- [ ] **2FA (TOTP)** en el login. Se puede omitir si Pocket ID cubre el acceso con passkeys, salvo para el login local de respaldo.
+- [ ] **Backups — más adelante**: cambiar la clave de cifrado, retención configurable y `restic check` periódico.
 - [ ] **Versiones mayores** en una rama propia: TypeScript 7, ESLint 10, Vitest 5, commitlint 21, jsdom 30.
 
 ---
@@ -91,3 +107,5 @@ sigue sin desplegarse en la VPS, desplegarla antes o hacer las dos operaciones s
 ## Descartado
 
 <!-- Ideas que se han considerado y descartado, con motivo -->
+
+- **Keycloak como gestor único de usuarios de todas las apps y CRMs** (01/11/2026) — excesivo para 2-3 CRMs y unos 5 clientes: los CRMs crean sus propios usuarios y habría que pasar esa gestión por su API, además de operar un servicio crítico para todos los clientes. Replantearlo si un usuario externo necesita una sola cuenta en varias apps, un cliente exige SSO con su directorio o SAML, o crece mucho el número de CRMs y clientes.

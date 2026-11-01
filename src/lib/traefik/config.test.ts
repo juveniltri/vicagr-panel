@@ -108,6 +108,7 @@ const ruta = (
   puerto: 3000,
   redireccionWww: "ninguna" as const,
   cloudflare: false,
+  soloCloudflare: false,
   middlewares: {},
   ...extra,
 });
@@ -306,13 +307,88 @@ describe("generarConfigProyecto", () => {
       expect(redireccion?.middlewares).toHaveLength(1);
       expect(config.http.middlewares?.[redireccion!.middlewares![0]]).toEqual({
         redirectRegex: {
-          regex: `^https?://${origen.replace(/\./g, "\\.")}/(.*)`,
+          regex: "^https?://[^/]+/(.*)",
           replacement: `https://${destino}/\${1}`,
           permanent: true,
         },
       });
     },
   );
+
+  it("el router de la redirección nunca llega al Servicio, aunque la ruta tenga protección", () => {
+    const { config } = generar([
+      ruta({
+        dominio: "example.com",
+        redireccionWww: "a_raiz",
+        middlewares: { ipPermitidas: ["203.0.113.7"] },
+      }),
+    ]);
+
+    const redireccion = Object.values(config.http.routers).find(
+      (r) => r.rule === "Host(`www.example.com`)",
+    );
+    expect(redireccion?.service).toBe("noop@internal");
+  });
+
+  it.each([
+    "www.example.com",
+    "WWW.example.com",
+    "www.example.com:443",
+    "www.example.com.",
+  ])("redirige con Host %s, que el router también acepta", (host) => {
+    const { config } = generar([
+      ruta({ dominio: "example.com", redireccionWww: "a_raiz" }),
+    ]);
+
+    const redireccion = Object.values(config.http.middlewares ?? {}).find(
+      (m) => "redirectRegex" in m,
+    ) as { redirectRegex: { regex: string } };
+    expect(`https://${host}/a?b=1`).toMatch(
+      new RegExp(redireccion.redirectRegex.regex),
+    );
+  });
+});
+
+describe("solo desde Cloudflare", () => {
+  beforeEach(() => mockWarn.mockClear());
+
+  it("pone un ipAllowList con los rangos y sin ipStrategy como primer middleware", () => {
+    const { config } = generar([
+      ruta({
+        cloudflare: true,
+        soloCloudflare: true,
+        middlewares: { ipPermitidas: ["203.0.113.7"] },
+      }),
+    ]);
+
+    const [router] = Object.values(config.http.routers);
+    expect(router.middlewares![0]).toMatch(/-r1-cloudflare$/);
+    expect(router.middlewares![1]).toMatch(/-r1-ip$/);
+    expect(config.http.middlewares?.["acme-web-r1-cloudflare"]).toEqual({
+      ipAllowList: { sourceRange: ["173.245.48.0/20"] },
+    });
+  });
+
+  it.each([
+    [{ cloudflare: true, soloCloudflare: false }],
+    [{ cloudflare: false, soloCloudflare: true }],
+  ])("no lo pone sin la casilla o sin Cloudflare (%o)", (extra) => {
+    const { config } = generar([ruta(extra)]);
+
+    expect(Object.keys(config.http.middlewares ?? {})).toEqual([]);
+  });
+
+  it("falla en cerrado con rangos vacíos", () => {
+    const { config } = generar(
+      [ruta({ cloudflare: true, soloCloudflare: true })],
+      { resolver: "letsencrypt-dns", rangos: [] },
+    );
+
+    expect(config.http.middlewares?.["acme-web-r1-cloudflare"]).toEqual({
+      ipAllowList: { sourceRange: ["255.255.255.255/32"] },
+    });
+    expect(mockWarn).toHaveBeenCalledTimes(1);
+  });
 });
 
 type ProyectoBD = {
