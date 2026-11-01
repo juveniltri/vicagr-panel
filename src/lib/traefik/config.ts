@@ -191,14 +191,18 @@ export function generarConfigProyecto(params: {
       const redireccion = `${nombre}-www`;
       routers[redireccion] = {
         rule: `Host(\`${limpiar(origen)}\`)`,
-        service: nombre,
+        // redirectRegex passes a non-matching request on to the service, and
+        // this router has none of the route's middlewares.
+        service: "noop@internal",
         entryPoints: ["websecure"],
         middlewares: [redireccion],
         tls,
       };
       middlewares[redireccion] = {
         redirectRegex: {
-          regex: `^https?://${origen.replace(/\./g, "\\.")}/(.*)`,
+          // The router already matched the host; the raw Host may differ in
+          // case, port or a trailing dot.
+          regex: "^https?://[^/]+/(.*)",
           replacement: `https://${ruta.dominio}/\${1}`,
           permanent: true,
         },
