@@ -2,7 +2,8 @@
 
 Guía única para el Panel en una VPS: **instalarlo desde cero** (§ A), **actualizarlo** a una
 versión nueva (§ B, con los pasos concretos de cada versión), **configurar Cloudflare** (§ C), el
-**acceso de emergencia** (§ D) y **problemas frecuentes** (§ E). Para reconstruir el Panel desde
+**acceso de emergencia** (§ D), **problemas frecuentes** (§ E) e **instalar Pocket ID y entrar con
+él** (§ F). Para reconstruir el Panel desde
 una copia de seguridad en otra VPS: `docs/recuperacion.md`.
 
 Los comandos se ejecutan en la VPS como `root` salvo que se diga otra cosa. El repositorio vive
@@ -195,6 +196,7 @@ En **Configuración → Backups**:
    y da permisos el § A4; el `docker-compose.yml` la monta en el Panel). Si la VPS o su disco se
    pierden, las copias se pierden con ella: monta ahí un volumen o disco aparte del proveedor
    (`/var/vicalba/backups` como punto de montaje) y pasa a S3/SFTP en cuanto puedas.
+
 2. Guarda el **kit de recuperación** que aparece **y** la `ENCRYPTION_KEY` fuera de la VPS.
    Confirma en el Panel que los has guardado.
 3. Activa la copia diaria y elige la hora (Europe/Madrid). Al día siguiente, comprueba en el
@@ -255,6 +257,21 @@ docker compose up -d --build
 
 Los Proyectos redesplegados con la versión nueva siguen funcionando; vuelve a desplegarlos si
 algo de su configuración depende de la versión anterior.
+
+### B2a. A la 2.5.0 (login con Pocket ID y fuentes locales)
+
+Si la VPS está en la **2.3.x** o anterior, haz antes § B2b, y también § B3 y § B4 si le corresponden:
+sus pasos «antes de actualizar» no se aplican solos.
+
+**Actualizar:** § B1. La migración añade una columna a los usuarios y se aplica sola al arrancar.
+No hace falta ninguna variable nueva: sin `OIDC_*`, el Panel sigue entrando solo con contraseña.
+
+**Activar Pocket ID (opcional):** § F. Si ya está instalado, basta con § F7 en este Panel.
+
+**Comprobaciones:**
+
+1. `curl https://panel.tudominio.com/api/health` da `"version":"2.5.0"`.
+2. El login con contraseña sigue funcionando y las fuentes se ven igual que antes.
 
 ### B2b. A la 2.4.0 (backups de Proyectos y «Solo desde Cloudflare»)
 
@@ -503,13 +520,39 @@ su configuración por defecto). Comprueba que existe `/var/vicalba/traefik/stati
 El directorio es de `root`: `chown 1001:1001 /var/vicalba/traefik/static` y
 `docker compose restart panel`.
 
+### El Panel no arranca: `Bind for … :3000 failed: port is already allocated`
+
+Otro contenedor publica el puerto 3000 de la VPS (`docker ps | grep 3000`). Los Proyectos no
+necesitan publicarlo, porque Traefik les llega por la red de Docker: lo más limpio es quitar ese
+`ports` del Proyecto. Si no se puede ahora, mueve el acceso de emergencia del Panel con un
+`docker-compose.override.yml` en `/opt/vicalba-app`, y usa ese puerto en el túnel de § D:
+
+```yaml
+services:
+  panel:
+    ports: !override
+      - "127.0.0.1:3001:3000"
+```
+
 ### Let's Encrypt no emite un certificado
 
 - El DNS resuelve a la IP de la VPS: `dig +short <dominio>`.
 - Los puertos 80 y 443 están abiertos en el firewall del proveedor.
 - Si el dominio va con la nube naranja de Cloudflare, la ruta tiene que estar marcada «Detrás de
-  Cloudflare» (§ C3).
+  Cloudflare» (§ C3). `Cannot negotiate ALPN protocol` en el log significa que el dominio pasa por
+  Cloudflare sin estar marcada: márcala o déjalo en gris.
 - Errores en `docker logs traefik` (busca `acme`).
+- Traefik puede no reintentar tras corregir el DNS y seguir sirviendo `TRAEFIK DEFAULT CERT`.
+  `docker compose restart panel` provoca otro intento sin cortar los Proyectos.
+
+### Un dominio detrás de Cloudflare responde `404 page not found`, y la VPS responde bien
+
+Cloudflare está enviando el dominio a otro servidor, por ejemplo la VPS de desarrollo, cuyo Traefik
+no tiene esa ruta. Compruébalo saltándote Cloudflare y, si responde bien, corrige la IP del registro DNS:
+
+```bash
+curl -sk -o /dev/null -w '%{http_code}\n' --resolve <dominio>:443:<IP_DE_LA_VPS> https://<dominio>/
+```
 
 ### Un dominio responde 502
 
@@ -537,3 +580,203 @@ Comprueba que está en `.env` con este formato:
 ```env
 DATABASE_URL=postgresql://vicalba:<DB_PASSWORD>@db:5432/vicalba
 ```
+
+---
+
+## F. Pocket ID (entrar en el Panel con passkey)
+
+[Pocket ID](https://pocket-id.org) es el gestor de usuarios **del equipo**: una sola cuenta y una
+passkey para entrar en los Paneles de las VPS de desarrollo y de producción. Los usuarios de los
+CRMs siguen en cada CRM.
+
+- **Dónde:** una sola instalación, en la **VPS de producción**. El Panel de desarrollo entra contra
+  esa misma instalación. Nunca al revés: se puede romper la VPS de desarrollo sin perder el acceso.
+- **Qué necesita cada parte:** instalarlo (§ F1–F5) funciona con cualquier versión del Panel desde
+  la 2.3.0. Conectar el Panel (§ F6–F8) necesita la 2.5.0.
+- **Respaldo:** el usuario y la contraseña de cada Panel siguen funcionando siempre. No los borres
+  ni los olvides: son la forma de entrar si Pocket ID cae, y la única por el acceso de emergencia (§ D).
+
+### F1. Preparar el dominio y los secretos
+
+1. Elige un dominio propio, por ejemplo `id.tudominio.com`, y apunta su DNS a la IP de la VPS de
+   producción, en gris (sin proxy) si usas Cloudflare. **Las passkeys quedan ligadas a ese dominio:
+   si lo cambias más adelante, hay que volver a registrarlas.** Déjalo en gris **antes** de crear la
+   ruta de § F2: las passkeys exigen HTTPS con un certificado válido, y detrás del proxy Traefik no
+   lo obtiene.
+2. Genera los dos secretos y **guárdalos en vuestro gestor de contraseñas**:
+
+   ```bash
+   openssl rand -hex 32   # POCKET_ID_ENCRYPTION_KEY: sin ella, una copia de seguridad no sirve
+   openssl rand -hex 16   # POCKET_ID_DB_PASSWORD
+   ```
+
+### F2. Crear el Proyecto en el Panel de producción
+
+1. Crea un **Cliente** para vuestras herramientas, por ejemplo `infra`, y dentro un **Proyecto**
+   `pocket-id` de tipo **compose**, sin repositorio.
+2. En el editor de compose pega esto. La versión va fijada a propósito: se actualiza a mano (§ F9).
+
+   ```yaml
+   services:
+     pocket-id:
+       image: ghcr.io/pocket-id/pocket-id:v2.19.1
+       restart: unless-stopped
+       environment:
+         APP_URL: ${POCKET_ID_URL}
+         ENCRYPTION_KEY: ${POCKET_ID_ENCRYPTION_KEY}
+         DB_CONNECTION_STRING: postgres://pocketid:${POCKET_ID_DB_PASSWORD}@pocket-id-db:5432/pocketid
+         TRUST_PROXY: 172.16.0.0/12,192.168.0.0/16
+         ANALYTICS_DISABLED: "true"
+       volumes:
+         - datos:/app/data
+       depends_on:
+         pocket-id-db:
+           condition: service_healthy
+
+     pocket-id-db:
+       image: postgres:16-alpine
+       restart: unless-stopped
+       environment:
+         POSTGRES_USER: pocketid
+         POSTGRES_PASSWORD: ${POCKET_ID_DB_PASSWORD}
+         POSTGRES_DB: pocketid
+       volumes:
+         - bd:/var/lib/postgresql/data
+       healthcheck:
+         test: ["CMD-SHELL", "pg_isready -U pocketid"]
+         interval: 5s
+         timeout: 5s
+         retries: 10
+
+   volumes:
+     datos:
+     bd:
+   ```
+
+   Usa Postgres y no el SQLite por defecto porque así los backups de Proyectos hacen un volcado
+   coherente de la BD.
+
+3. En la pestaña **Variables**, **Editar variables**:
+
+   ```env
+   POCKET_ID_URL=https://id.tudominio.com
+   POCKET_ID_ENCRYPTION_KEY=<el primero que generaste>
+   POCKET_ID_DB_PASSWORD=<el segundo>
+   ```
+
+4. En la pestaña **Dominios**, **+ Nuevo dominio**: `id.tudominio.com`, Servicio `pocket-id`,
+   puerto `1411`. **Añade IPs permitidas con la IP desde la que trabajas:** hasta que exista el
+   primer usuario, cualquiera que llegue a `/setup` puede crear la cuenta de administrador.
+5. **Deploy**. Comprueba desde tu ordenador que responde:
+
+   ```bash
+   curl -s https://id.tudominio.com/.well-known/openid-configuration | head -c 100
+   ```
+
+   Debe empezar por `{"authorization_endpoint":"https://id.tudominio.com/authorize"`.
+
+### F3. Crear el administrador
+
+1. Abre `https://id.tudominio.com/setup`, rellena tus datos, **Sign Up** y **Add Passkey**.
+2. **Registra una segunda passkey** en otro dispositivo o llave física, desde **My Account → Add
+   Passkey**. Si pierdes la única que tienes, solo te queda § F8.
+3. Crea a la otra persona del equipo en **Administration → Users** y envíale un enlace de acceso de
+   un solo uso para que registre las suyas.
+4. **Quita las IPs permitidas** del dominio en el Panel: la instalación ya está reclamada, y hay que
+   entrar desde cualquier sitio. Sin passkey nadie puede entrar.
+
+### F4. Grupos y aplicaciones
+
+1. En **Administration → User Groups**, **Add Group**: uno por entorno, por ejemplo
+   `panel-produccion` y `panel-desarrollo`, y añade a cada persona a los que le correspondan.
+2. En **Administration → OIDC Clients**, **Add OIDC Client**, una aplicación **por Panel**:
+   - **Name:** `Panel producción`
+   - Tipo **Confidential Client**
+   - **Callback URLs:** `https://panel.tudominio.com/api/auth/callback/pocket-id`
+   - **Create** y, en la aplicación creada, activa **PKCE**.
+3. Copia el **client ID**, que aparece en la cabecera de la aplicación, y en la pestaña **Credentials**
+   crea el secreto con **Add client secret**. **Solo se muestra una vez.** Ten a mano los dos para § F7.
+4. En **Access** elige **Selected user groups** y marca su grupo: por defecto puede entrar cualquier
+   usuario de Pocket ID.
+5. Repite con `Panel desarrollo` y la URL de su Panel. Cada Panel debe tener su propio client ID y
+   su propio secreto: así, un secreto filtrado en desarrollo no sirve en producción.
+
+### F5. Backups
+
+En el Proyecto `pocket-id`, pestaña **Backups**, comprueba que aparecen la base de datos de
+`pocket-id-db` y los datos de `datos`, y pulsa **Copia ahora**. Para recuperarlo hace falta también
+`POCKET_ID_ENCRYPTION_KEY`, que ya has guardado en § F1. Prueba una vez a restaurarlo: es la
+cuenta de todo el equipo.
+
+### F6. Instalar la versión del Panel
+
+Actualiza cada Panel a la **2.5.0** siguiendo § B2a.
+
+### F7. Conectar cada Panel
+
+1. En el `.env` de la VPS (`/opt/vicalba-app/.env`), sin barra final en la URL:
+
+   ```env
+   OIDC_ISSUER=https://id.tudominio.com
+   OIDC_CLIENT_ID=<client ID de ESTE Panel>
+   OIDC_CLIENT_SECRET=<secreto de ESTE Panel>
+   ```
+
+   Las tres o ninguna: con solo alguna, el Panel no arranca y lo explica en su log.
+
+2. Aplica el cambio: `docker compose up -d`.
+3. Abre el Panel y pulsa **Entrar con Pocket ID**. **La primera vez te rechazará**: solo entra quien
+   esté vinculado a un usuario del Panel, y la pantalla te muestra tu identificador. Cópialo.
+4. Entra con tu **contraseña**, ve a **Usuarios → Pocket ID** en tu usuario, pega el identificador y
+   guarda.
+5. Cierra la sesión y entra con **Entrar con Pocket ID**. Repite por persona y por Panel: el
+   identificador es el mismo en los dos Paneles.
+
+Las sesiones iniciadas con Pocket ID duran **12 horas**; las de contraseña, 7 días.
+
+### F8. Altas, bajas y recuperación
+
+- **Dar de baja a alguien:** elimínalo en **Usuarios** de cada Panel o pulsa **Quitar vínculo**: cierra
+  sus sesiones al momento. Si solo lo quitas en Pocket ID, no podrá volver a entrar, pero **su
+  sesión abierta sigue viva hasta 12 horas**, y su contraseña del Panel sigue funcionando.
+- **Alguien pierde su passkey:** otro administrador le envía un enlace de acceso de un solo uso desde
+  **Administration → Users**.
+- **Ningún administrador puede entrar:** en la VPS de producción, con el nombre de usuario de Pocket ID:
+
+  ```bash
+  docker ps --format '{{.Names}}' | grep pocket-id
+  docker exec <contenedor-pocket-id> /app/pocket-id one-time-access-token <usuario>
+  ```
+
+  Da un enlace válido durante 1 hora y de un solo uso. Entra y registra una passkey nueva.
+
+- **Pocket ID está caído:** cada Panel avisa en el login y se entra con contraseña.
+
+### F9. Actualizar Pocket ID
+
+Lee las [notas de la versión](https://github.com/pocket-id/pocket-id/releases), haz **Copia ahora**,
+cambia la versión de la imagen en el editor de compose y haz **Deploy**.
+
+### F10. Problemas frecuentes
+
+- **El login dice «No se pudo entrar con Pocket ID» y la URL lleva `error=Configuration`:** el Panel
+  no llega a Pocket ID, o `OIDC_ISSUER` no coincide exactamente (barra final, `http`/`https`). Desde
+  la VPS del Panel:
+
+  ```bash
+  docker compose exec panel node -e "fetch('https://id.tudominio.com/.well-known/openid-configuration').then(r => console.log(r.status))"
+  ```
+
+  Si falla solo desde el contenedor de la VPS de producción, revisa que la VPS pueda llegar a su
+  propia IP pública (el Panel entra por el dominio y vuelve a pasar por Traefik).
+
+- **Pocket ID dice que la URL de retorno no es válida:** revisa **Callback URLs**: debe ser exactamente
+  `https://<dominio del Panel>/api/auth/callback/pocket-id`.
+- **Pocket ID te rechaza al volver a un Panel concreto:** esa persona no está en el grupo de esa
+  aplicación (§ F4).
+- **Al añadir la passkey dice que se ha cancelado, o el navegador no la ofrece:** las passkeys exigen
+  HTTPS con un certificado válido y el dominio con el que se registraron. Comprueba que el candado
+  no da ningún aviso (§ E, «Let's Encrypt no emite un certificado») y que `POCKET_ID_URL` usa `https`.
+  Si el servidor está bien, prueba otro navegador o regístrala desde el móvil, abriendo allí Pocket ID:
+  el aviso «Passkey no encontrada» solo indica que aún no tienes ninguna.
+- **Te has quedado sin sesión antes de registrar la primera passkey:** usa el comando de § F8.

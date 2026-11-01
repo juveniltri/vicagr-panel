@@ -1,11 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import { loginAction } from "@/app/(auth)/login/actions";
+import { loginAction, loginOidcAction } from "@/app/(auth)/login/actions";
 
-export function LoginForm() {
+export function LoginForm({
+  oidcActivo = false,
+  errorOidc,
+  subSinVincular,
+}: {
+  oidcActivo?: boolean;
+  errorOidc?: string;
+  subSinVincular?: string;
+}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [redirigiendo, setRedirigiendo] = useState(false);
+
+  async function entrarConPocketId() {
+    setRedirigiendo(true);
+    setError(null);
+    try {
+      window.location.assign(await loginOidcAction());
+    } catch {
+      setError("No se pudo contactar con Pocket ID. Entra con tu contraseña.");
+      setRedirigiendo(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -26,6 +46,44 @@ export function LoginForm() {
       <h1 className="font-display text-xl font-bold text-text-primary mb-6">
         VICALBA
       </h1>
+      {errorOidc && (
+        <div
+          role="alert"
+          className="mb-4 flex flex-col gap-1 font-body text-sm text-state-error"
+        >
+          {errorOidc === "oidc_sin_vincular" ? (
+            <>
+              <p>Tu cuenta de Pocket ID no está vinculada a este Panel.</p>
+              {subSinVincular && (
+                <p className="text-xs text-text-muted">
+                  Identificador para vincularla:{" "}
+                  <code className="break-all">{subSinVincular}</code>
+                </p>
+              )}
+            </>
+          ) : (
+            <p>
+              No se pudo entrar con Pocket ID. Prueba otra vez o entra con tu
+              contraseña.
+            </p>
+          )}
+        </div>
+      )}
+      {oidcActivo && (
+        <div className="mb-4 flex flex-col gap-4">
+          <button
+            type="button"
+            onClick={entrarConPocketId}
+            disabled={redirigiendo}
+            className="px-4 py-2 bg-primary-500 text-white font-body text-sm font-medium rounded-[var(--radius-sm)] hover:bg-primary-600 disabled:opacity-50 transition-colors"
+          >
+            {redirigiendo ? "Redirigiendo…" : "Entrar con Pocket ID"}
+          </button>
+          <p className="font-body text-xs text-text-muted text-center">
+            o con tu contraseña
+          </p>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <label htmlFor="email" className="font-body text-sm text-text-muted">

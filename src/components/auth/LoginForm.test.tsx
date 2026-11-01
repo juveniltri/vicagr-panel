@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/app/(auth)/login/actions", () => ({
   loginAction: vi.fn().mockResolvedValue(undefined),
+  loginOidcAction: vi.fn(),
 }));
 
-import { loginAction } from "@/app/(auth)/login/actions";
+import { loginAction, loginOidcAction } from "@/app/(auth)/login/actions";
 import { LoginForm } from "./LoginForm";
 
 describe("LoginForm — renderizado", () => {
@@ -116,5 +117,79 @@ describe("LoginForm — error de credenciales", () => {
   it("no muestra error antes de hacer submit", () => {
     render(<LoginForm />);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("LoginForm — Pocket ID", () => {
+  const assign = vi.fn();
+
+  beforeEach(() => {
+    assign.mockClear();
+    vi.stubGlobal("location", { assign });
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sin configurar no ofrece Pocket ID", () => {
+    render(<LoginForm />);
+    expect(
+      screen.queryByRole("button", { name: "Entrar con Pocket ID" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("mantiene el login con contraseña como respaldo", () => {
+    render(<LoginForm oidcActivo />);
+    expect(
+      screen.getByRole("button", { name: "Entrar con Pocket ID" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Contraseña")).toBeInTheDocument();
+  });
+
+  it("navega a la URL del proveedor", async () => {
+    vi.mocked(loginOidcAction).mockResolvedValue("https://id.example.com/auth");
+    render(<LoginForm oidcActivo />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Entrar con Pocket ID" }),
+    );
+
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith("https://id.example.com/auth"),
+    );
+  });
+
+  it("si falla avisa y deja entrar con contraseña", async () => {
+    vi.mocked(loginOidcAction).mockRejectedValue(new Error("caído"));
+    render(<LoginForm oidcActivo />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Entrar con Pocket ID" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Entra con tu contraseña",
+    );
+    expect(
+      screen.getByRole("button", { name: "Entrar con Pocket ID" }),
+    ).toBeEnabled();
+  });
+
+  it("sin vínculo muestra el identificador para vincular la cuenta", () => {
+    render(
+      <LoginForm
+        oidcActivo
+        errorOidc="oidc_sin_vincular"
+        subSinVincular="sub-123"
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("no está vinculada");
+    expect(screen.getByRole("alert")).toHaveTextContent("sub-123");
+  });
+
+  it("con otro error del proveedor da un aviso genérico", () => {
+    render(<LoginForm oidcActivo errorOidc="Configuration" />);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "No se pudo entrar con Pocket ID",
+    );
   });
 });

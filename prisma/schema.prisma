@@ -151,6 +151,8 @@ model User {
   creadoEn      DateTime @default(now())
   // Sessions issued before this instant are rejected (password change).
   sesionesDesde DateTime @default(now())
+  // Pocket ID's "sub". Linked by hand: being in Pocket ID doesn't grant access.
+  oidcSub       String?  @unique
 }
 
 model Deploy {

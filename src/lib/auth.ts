@@ -3,10 +3,11 @@ import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import { env } from "@/env";
 import { prisma } from "@/lib/prisma";
 import { authConfig } from "./auth.config";
 import { crearLimitador } from "./rate-limit";
-import { sesionVigente } from "./sesion";
+import { PROVEEDOR_OIDC, accesoOidc, sesionVigente, tokenOidc } from "./sesion";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -34,8 +35,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   ...authConfig,
   callbacks: {
     ...authConfig.callbacks,
+    async signIn({ account, profile }) {
+      if (account?.provider !== PROVEEDOR_OIDC) return true;
+      return accesoOidc(profile?.sub);
+    },
     // Returning null drops the session: auth() then answers as logged out.
-    async jwt({ token, user }) {
+    async jwt({ token, user, account, profile }) {
+      if (account?.provider === PROVEEDOR_OIDC)
+        return tokenOidc(token, profile?.sub);
       if (user) return { ...token, iniciadaEn: Date.now() };
       return (await sesionVigente(token)) ? token : null;
     },
@@ -58,5 +65,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return { id: user.id, email: user.email, name: user.nombre };
       },
     }),
+    ...(env.OIDC_ISSUER
+      ? [
+          {
+            id: PROVEEDOR_OIDC,
+            name: "Pocket ID",
+            type: "oidc" as const,
+            issuer: env.OIDC_ISSUER,
+            clientId: env.OIDC_CLIENT_ID,
+            clientSecret: env.OIDC_CLIENT_SECRET,
+            checks: ["pkce" as const, "state" as const, "nonce" as const],
+          },
+        ]
+      : []),
   ],
 });

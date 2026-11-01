@@ -167,6 +167,7 @@ NOTE:  contexto que sorprendería a un futuro lector
 - TLS: mínimo TLS 1.2 — Traefik gestiona la negociación
 - Webhook secret de GitHub: validar HMAC-SHA256 en cada petición entrante
 - Sesión: JWT de 7 días validado contra la BD en cada `auth()` (`sesionVigente`, `src/lib/sesion.ts`): un usuario eliminado o con la contraseña cambiada (`User.sesionesDesde`) pierde la sesión al momento
+- Pocket ID (opcional, `OIDC_*`; guía en `production.md` § F): solo entra quien tenga `User.oidcSub`, vinculado a mano en Usuarios, nunca por email ni con alta automática; sesión de 12 h (`sesion.ts`); el login por contraseña sigue siempre como respaldo. El cliente navega al proveedor con la URL que devuelve `loginOidcAction`, porque `form-action 'self'` del CSP bloquearía un formulario que redirige
 
 Antes de cada merge a `master`: invoca `/security-review`.
 
@@ -442,6 +443,6 @@ Ver `CONTEXT.md` para el glosario completo.
     backups de Proyectos (BDs Postgres/MySQL y carpetas/volúmenes de datos, pestaña Backups, restauración con copia previa,
     cancelar, borrar copias al eliminar), destino local y «Solo desde Cloudflare» por ruta; pendientes de la fase A resueltos
     (1586 tests). Pendiente en la VPS de desarrollo: verificar los backups de Proyectos (`production.md` § B2b) y certificados reales con Cloudflare.
-- **En construcción:** —
+- **En construcción:** login con Pocket ID y fuentes locales (`feature/pocket-id-fuentes`, sin mergear; falta probar Pocket ID en la VPS de desarrollo)
 - **Bloqueado / pendiente:** ver `docs/roadmap.md`
-- **Próximo hito:** verificar la 2.4.0 en la VPS de desarrollo; después E2E, alerta de disco, CSP estricta, cobertura, fuentes locales y login con Pocket ID (ver `docs/roadmap.md`)
+- **Próximo hito:** verificar la 2.4.0 en la VPS de desarrollo; después E2E, alerta de disco, CSP estricta, cobertura y login con Pocket ID (ver `docs/roadmap.md`)

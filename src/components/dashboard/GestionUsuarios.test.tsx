@@ -10,11 +10,13 @@ const {
   actualizarUsuarioAction,
   cambiarPasswordAction,
   eliminarUsuarioAction,
+  vincularOidcAction,
 } = vi.hoisted(() => ({
   crearUsuarioAction: vi.fn().mockResolvedValue(undefined),
   actualizarUsuarioAction: vi.fn().mockResolvedValue(undefined),
   cambiarPasswordAction: vi.fn().mockResolvedValue(undefined),
   eliminarUsuarioAction: vi.fn().mockResolvedValue(undefined),
+  vincularOidcAction: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/app/(panel)/actions", () => ({
@@ -22,6 +24,7 @@ vi.mock("@/app/(panel)/actions", () => ({
   actualizarUsuarioAction,
   cambiarPasswordAction,
   eliminarUsuarioAction,
+  vincularOidcAction,
 }));
 
 beforeAll(() => {
@@ -222,5 +225,75 @@ describe("GestionUsuarios — eliminar usuario", () => {
     expect(
       screen.getByRole("button", { name: /eliminar admin/i }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("GestionUsuarios — Pocket ID", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const conVinculo = [{ ...mockUsuarios[0], oidcSub: "sub-1" }];
+
+  it("sin Pocket ID configurado no aparece", () => {
+    render(<GestionUsuarios usuariosIniciales={conVinculo} />);
+    expect(
+      screen.queryByRole("button", { name: "Pocket ID de Admin" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Pocket ID vinculado")).not.toBeInTheDocument();
+  });
+
+  it("vincula el identificador pegado", async () => {
+    render(<GestionUsuarios usuariosIniciales={mockUsuarios} oidcActivo />);
+    fireEvent.click(screen.getByRole("button", { name: "Pocket ID de Admin" }));
+    fireEvent.change(screen.getByLabelText("Identificador en Pocket ID"), {
+      target: { value: "sub-9" },
+    });
+    expect(
+      screen.queryByRole("button", { name: "Quitar vínculo" }),
+    ).not.toBeInTheDocument();
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Guardar vínculo" }).closest("form")!,
+    );
+
+    await waitFor(() =>
+      expect(vincularOidcAction).toHaveBeenCalledWith("u1", "sub-9"),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Pocket ID de Admin" }),
+    ).toBeInTheDocument();
+  });
+
+  it("muestra el vínculo y permite quitarlo", async () => {
+    render(<GestionUsuarios usuariosIniciales={conVinculo} oidcActivo />);
+    expect(screen.getByText("Pocket ID vinculado")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Pocket ID de Admin" }));
+    fireEvent.click(screen.getByRole("button", { name: "Quitar vínculo" }));
+
+    await waitFor(() =>
+      expect(vincularOidcAction).toHaveBeenCalledWith("u1", null),
+    );
+  });
+
+  it("muestra el error y no cierra el formulario", async () => {
+    vincularOidcAction.mockResolvedValueOnce({ error: "Ya está vinculado" });
+    render(<GestionUsuarios usuariosIniciales={conVinculo} oidcActivo />);
+    fireEvent.click(screen.getByRole("button", { name: "Pocket ID de Admin" }));
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Guardar vínculo" }).closest("form")!,
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Ya está vinculado",
+    );
+    expect(
+      screen.getByLabelText("Identificador en Pocket ID"),
+    ).toBeInTheDocument();
+  });
+
+  it("cancelar vuelve a la lista sin guardar", () => {
+    render(<GestionUsuarios usuariosIniciales={conVinculo} oidcActivo />);
+    fireEvent.click(screen.getByRole("button", { name: "Pocket ID de Admin" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(vincularOidcAction).not.toHaveBeenCalled();
+    expect(screen.getByText("Pocket ID vinculado")).toBeInTheDocument();
   });
 });

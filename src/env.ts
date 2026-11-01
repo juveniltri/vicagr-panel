@@ -1,66 +1,88 @@
 import { z } from "zod";
 
-const serverSchema = z.object({
-  NODE_ENV: z
-    .enum(["development", "test", "production"])
-    .default("development"),
+// docker-compose passes "" for a variable that isn't set in .env.
+const vacioComoAusente = <T extends z.ZodType>(esquema: T) =>
+  z.preprocess((v) => (v === "" ? undefined : v), esquema.optional());
 
-  // Base de datos
-  DATABASE_URL: z.string().url("DATABASE_URL debe ser una URL válida"),
+const serverSchema = z
+  .object({
+    NODE_ENV: z
+      .enum(["development", "test", "production"])
+      .default("development"),
 
-  // Auth
-  NEXTAUTH_SECRET: z
-    .string()
-    .min(32, "NEXTAUTH_SECRET debe tener al menos 32 caracteres"),
-  NEXTAUTH_URL: z.string().url(),
+    // Base de datos
+    DATABASE_URL: z.string().url("DATABASE_URL debe ser una URL válida"),
 
-  // GitHub Webhooks — validación HMAC-SHA256 de payloads entrantes
-  GITHUB_WEBHOOK_SECRET: z.string().min(16),
+    // Auth
+    NEXTAUTH_SECRET: z
+      .string()
+      .min(32, "NEXTAUTH_SECRET debe tener al menos 32 caracteres"),
+    NEXTAUTH_URL: z.string().url(),
 
-  // Cifrado AES-256-GCM para variables de entorno de proyectos
-  ENCRYPTION_KEY: z
-    .string()
-    .regex(
-      /^[0-9a-f]{64}$/,
-      "ENCRYPTION_KEY debe ser exactamente 64 caracteres hexadecimales (32 bytes)",
+    // Login con Pocket ID (opcional): las tres o ninguna. Vacío = solo contraseña.
+    OIDC_ISSUER: vacioComoAusente(z.string().url()),
+    OIDC_CLIENT_ID: vacioComoAusente(z.string()),
+    OIDC_CLIENT_SECRET: vacioComoAusente(z.string()),
+
+    // GitHub Webhooks — validación HMAC-SHA256 de payloads entrantes
+    GITHUB_WEBHOOK_SECRET: z.string().min(16),
+
+    // Cifrado AES-256-GCM para variables de entorno de proyectos
+    ENCRYPTION_KEY: z
+      .string()
+      .regex(
+        /^[0-9a-f]{64}$/,
+        "ENCRYPTION_KEY debe ser exactamente 64 caracteres hexadecimales (32 bytes)",
+      ),
+
+    // Docker — ruta al socket del daemon (por defecto el estándar de Linux)
+    DOCKER_SOCKET_PATH: z.string().default("/var/run/docker.sock"),
+
+    // Deploy — directorio donde Traefik lee su config dinámica
+    TRAEFIK_DYNAMIC_DIR: z.string().default("/etc/traefik/dynamic"),
+    // Proxy — directorio del traefik.yml estático que genera el Panel
+    TRAEFIK_STATIC_DIR: z.string().default("/etc/traefik/static"),
+    // Proxy — email de la cuenta de Let's Encrypt (avisos de caducidad)
+    ACME_EMAIL: z.preprocess(
+      (v) => (v === "" ? undefined : v),
+      z.string().email().optional(),
     ),
+    // Deploy — directorio local donde se clonan los repos de los proyectos
+    REPOS_DIR: z.string().default("/var/vicalba/repos"),
+    // Backups — carpeta del destino local; misma ruta en la VPS y en el contenedor
+    BACKUPS_LOCAL_DIR: z.string().default("/var/vicalba/backups"),
+    TRAEFIK_CONTAINER_NAME: z.string().default("traefik"),
+    // Ruta dentro del contenedor Traefik (coincide con `storage` en traefik.yml) —
+    // se lee vía `docker exec` en ese contenedor, no como fichero local del panel.
+    ACME_JSON_PATH: z.string().default("/letsencrypt/acme.json"),
 
-  // Docker — ruta al socket del daemon (por defecto el estándar de Linux)
-  DOCKER_SOCKET_PATH: z.string().default("/var/run/docker.sock"),
+    // Panel — dominio público del panel (usado en next.config.ts para redirects HTTPS)
+    PANEL_DOMAIN: z.string().optional(),
 
-  // Deploy — directorio donde Traefik lee su config dinámica
-  TRAEFIK_DYNAMIC_DIR: z.string().default("/etc/traefik/dynamic"),
-  // Proxy — directorio del traefik.yml estático que genera el Panel
-  TRAEFIK_STATIC_DIR: z.string().default("/etc/traefik/static"),
-  // Proxy — email de la cuenta de Let's Encrypt (avisos de caducidad)
-  ACME_EMAIL: z.preprocess(
-    (v) => (v === "" ? undefined : v),
-    z.string().email().optional(),
-  ),
-  // Deploy — directorio local donde se clonan los repos de los proyectos
-  REPOS_DIR: z.string().default("/var/vicalba/repos"),
-  // Backups — carpeta del destino local; misma ruta en la VPS y en el contenedor
-  BACKUPS_LOCAL_DIR: z.string().default("/var/vicalba/backups"),
-  TRAEFIK_CONTAINER_NAME: z.string().default("traefik"),
-  // Ruta dentro del contenedor Traefik (coincide con `storage` en traefik.yml) —
-  // se lee vía `docker exec` en ese contenedor, no como fichero local del panel.
-  ACME_JSON_PATH: z.string().default("/letsencrypt/acme.json"),
+    // Logging
+    LOG_LEVEL: z
+      .enum(["trace", "debug", "info", "warn", "error", "fatal"])
+      .default("info"),
 
-  // Panel — dominio público del panel (usado en next.config.ts para redirects HTTPS)
-  PANEL_DOMAIN: z.string().optional(),
-
-  // Logging
-  LOG_LEVEL: z
-    .enum(["trace", "debug", "info", "warn", "error", "fatal"])
-    .default("info"),
-
-  // Monitoring (opcional — el panel arranca sin Sentry)
-  // docker-compose passes "" when it is not set in .env; that means "no Sentry".
-  SENTRY_DSN: z.preprocess(
-    (v) => (v === "" ? undefined : v),
-    z.string().url().optional(),
-  ),
-});
+    // Monitoring (opcional — el panel arranca sin Sentry)
+    // docker-compose passes "" when it is not set in .env; that means "no Sentry".
+    SENTRY_DSN: z.preprocess(
+      (v) => (v === "" ? undefined : v),
+      z.string().url().optional(),
+    ),
+  })
+  .refine(
+    (e) =>
+      [e.OIDC_ISSUER, e.OIDC_CLIENT_ID, e.OIDC_CLIENT_SECRET].filter(Boolean)
+        .length %
+        3 ===
+      0,
+    {
+      path: ["OIDC_ISSUER"],
+      message:
+        "OIDC_ISSUER, OIDC_CLIENT_ID y OIDC_CLIENT_SECRET van las tres juntas",
+    },
+  );
 
 const clientSchema = z.object({
   // Sin variables públicas por ahora — panel 100% interno
