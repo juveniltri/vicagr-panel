@@ -443,6 +443,7 @@ Ver `CONTEXT.md` para el glosario completo.
     backups de Proyectos (BDs Postgres/MySQL y carpetas/volúmenes de datos, pestaña Backups, restauración con copia previa,
     cancelar, borrar copias al eliminar), destino local y «Solo desde Cloudflare» por ruta; pendientes de la fase A resueltos
     (1586 tests). Pendiente en la VPS de desarrollo: verificar los backups de Proyectos (`production.md` § B2b) y certificados reales con Cloudflare.
-- **En construcción:** login con Pocket ID y fuentes locales (`feature/pocket-id-fuentes`, sin mergear; falta probar Pocket ID en la VPS de desarrollo)
+  - Versión 2.5.0 (`release/2.5.0`): login con Pocket ID (OIDC opcional, `User.oidcSub` vinculado a mano, sesión de 12 h, guía en `production.md` § F) y fuentes locales. Probado en real: Pocket ID en la VPS de producción y login en el Panel de desarrollo. Pendiente: conectar el Panel de producción y restaurar un backup de Pocket ID.
+- **En construcción:** —
 - **Bloqueado / pendiente:** ver `docs/roadmap.md`
-- **Próximo hito:** verificar la 2.4.0 en la VPS de desarrollo; después E2E, alerta de disco, CSP estricta, cobertura y login con Pocket ID (ver `docs/roadmap.md`)
+- **Próximo hito:** verificar la 2.4.0 y la 2.5.0 en las VPS; después E2E, alerta de disco, CSP estricta y cobertura (ver `docs/roadmap.md`)
