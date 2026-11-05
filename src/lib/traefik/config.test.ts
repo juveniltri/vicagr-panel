@@ -133,7 +133,7 @@ describe("generarConfigProyecto", () => {
   it("una ruta sin servicio enruta su dominio por HTTPS al alias del Proyecto", () => {
     const { yaml, config } = generar([ruta()]);
 
-    expect(yaml?.startsWith("# generado por vicalba-panel proyecto=p1\n")).toBe(
+    expect(yaml?.startsWith("# generado por vicagr-panel proyecto=p1\n")).toBe(
       true,
     );
     const routers = Object.values(config.http.routers);
@@ -483,7 +483,7 @@ describe("sincronizarTraefikCliente", () => {
     ficheros.set("acme_viejo.yml", "http: {}\n");
     ficheros.set(
       "otro_api.yml",
-      "# generado por vicalba-panel proyecto=p9\nhttp: {}\n",
+      "# generado por vicagr-panel proyecto=p9\nhttp: {}\n",
     );
     mockClienteFindUnique.mockResolvedValue(clienteEnBD("acme", []));
 
@@ -593,7 +593,7 @@ describe("regenerarConfigTraefik", () => {
   it("regenera los ficheros de todos los Clientes y borra los generados de Clientes que ya no existen", async () => {
     ficheros.set(
       "borrado_web.yml",
-      "# generado por vicalba-panel proyecto=p9\nhttp: {}\n",
+      "# generado por vicagr-panel proyecto=p9\nhttp: {}\n",
     );
     const acme = clienteEnBD("acme", [
       { id: "p1", nombre: "web", rutas: [ruta()] },
@@ -613,6 +613,18 @@ describe("regenerarConfigTraefik", () => {
       "acme_web.yml",
       "beta_api.yml",
     ]);
+  });
+
+  it("trata como generado el fichero con la cabecera anterior al cambio de nombre", async () => {
+    ficheros.set(
+      "viejo_web.yml",
+      "# generado por vicalba-panel proyecto=p9\nhttp: {}\n",
+    );
+    mockClienteFindMany.mockResolvedValue([]);
+
+    await regenerarConfigTraefik();
+
+    expect([...ficheros.keys()]).toEqual([]);
   });
 
   it("si un Cliente falla, lo registra y sigue con los demás", async () => {

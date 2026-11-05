@@ -45,7 +45,7 @@ function renderPanel(props: Partial<Parameters<typeof DominiosPanel>[0]> = {}) {
       esCompose
       puertoProyecto={3000}
       rutas={[ruta()]}
-      yaml={"# generado por vicalba-panel proyecto=p1\nhttp: {}"}
+      yaml={"# generado por vicagr-panel proyecto=p1\nhttp: {}"}
       serviciosConocidos={["web", "api"]}
       serviciosEnMarcha={["web"]}
       {...props}
@@ -119,7 +119,7 @@ describe("DominiosPanel — lista", () => {
     expect(
       screen.getByText("Ver YAML generado para Traefik"),
     ).toBeInTheDocument();
-    expect(screen.getByText(/generado por vicalba-panel/)).toBeInTheDocument();
+    expect(screen.getByText(/generado por vicagr-panel/)).toBeInTheDocument();
   });
 });
 

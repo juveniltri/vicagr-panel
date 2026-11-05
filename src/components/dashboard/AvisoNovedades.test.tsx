@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AvisoNovedades } from "./AvisoNovedades";
 
-const CLAVE = "vicalba:novedades-vistas";
+const CLAVE = "vicagr:novedades-vistas";
 
 describe("AvisoNovedades", () => {
   beforeEach(() => localStorage.clear());

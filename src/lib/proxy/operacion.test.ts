@@ -108,7 +108,7 @@ vi.mock("@prisma/client", () => ({ Prisma: { DbNull: null } }));
 vi.mock("@/env", () => ({
   env: {
     ACME_JSON_PATH: "/letsencrypt/acme.json",
-    ACME_EMAIL: "ops@vicalba.com",
+    ACME_EMAIL: "ops@vicagr.com",
   },
 }));
 
@@ -180,7 +180,7 @@ describe("lanzarAplicacionProxy", () => {
       log: null,
     });
     expect(traefik.estatico).toContain("level: DEBUG");
-    expect(traefik.estatico).toContain("email: ops@vicalba.com");
+    expect(traefik.estatico).toContain("email: ops@vicagr.com");
   });
 
   it("no deja lanzar una segunda mientras hay una en curso", async () => {

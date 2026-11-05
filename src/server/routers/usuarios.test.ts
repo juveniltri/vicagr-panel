@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/env", () => ({
   env: {
-    REPOS_DIR: "/var/vicalba/repos",
+    REPOS_DIR: "/var/vicagr/repos",
     NODE_ENV: "test",
     DATABASE_URL: "postgresql://test",
     NEXTAUTH_SECRET: "test-secret",
@@ -103,13 +103,13 @@ import { appRouter } from "@/server/routers/_app";
 const createCaller = createCallerFactory(appRouter);
 
 const mockSession = {
-  user: { id: "u1", email: "admin@vicalba.local", name: "Admin" },
+  user: { id: "u1", email: "admin@vicagr.local", name: "Admin" },
   expires: "2099-01-01",
 };
 
 const mockUser = {
   id: "u1",
-  email: "admin@vicalba.local",
+  email: "admin@vicagr.local",
   nombre: "Admin",
   creadoEn: new Date(),
 };
@@ -156,7 +156,7 @@ describe("usuarios.crear", () => {
 
     const ctx = await createContext();
     await createCaller(ctx).usuarios.crear({
-      email: "nuevo@vicalba.local",
+      email: "nuevo@vicagr.local",
       nombre: "Nuevo",
       password: "secret123",
     });
@@ -165,7 +165,7 @@ describe("usuarios.crear", () => {
     expect(prisma.user.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          email: "nuevo@vicalba.local",
+          email: "nuevo@vicagr.local",
           nombre: "Nuevo",
           passwordHash: "hashed-password",
         }),
@@ -179,7 +179,7 @@ describe("usuarios.crear", () => {
     const ctx = await createContext();
     await expect(
       createCaller(ctx).usuarios.crear({
-        email: "dup@vicalba.local",
+        email: "dup@vicagr.local",
         nombre: "Dup",
         password: "secret123",
       }),
@@ -229,7 +229,7 @@ describe("usuarios.actualizar", () => {
     const result = await createCaller(ctx).usuarios.actualizar({
       id: "u1",
       nombre: "Nuevo Nombre",
-      email: "nuevo@vicalba.local",
+      email: "nuevo@vicagr.local",
     });
 
     expect(prisma.user.update).toHaveBeenCalledWith(
@@ -263,7 +263,7 @@ describe("usuarios.actualizar", () => {
       createCaller(ctx).usuarios.actualizar({
         id: "u1",
         nombre: "X",
-        email: "dup@vicalba.local",
+        email: "dup@vicagr.local",
       }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
   });

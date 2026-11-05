@@ -66,7 +66,7 @@ model RutaProyecto {
 - Alias por Servicio en la red del cliente: `<cliente>-<proyecto>-<servicio>` para cada Servicio que aparezca en alguna ruta. Se mantiene `<cliente>-<proyecto>` para el Servicio de la primera ruta (compatibilidad). Rutas sin servicio → comportamiento actual.
 - Fichero `dynamic/<cliente>-<proyecto>.yml` (corrige el bug); al regenerar se borra el antiguo `<nombre>.yml` si existe.
 - Un router por ruta: `rule: Host(...) [&& PathPrefix(...)]`, `entryPoints: [websecure]`, `tls.certResolver`. Nombres con prefijo `<cliente>-<proyecto>-` y el id corto de la ruta.
-- Función pura `generarConfigProyecto(proyecto, rutas, ajustes)` → YAML, con tests; se escribe al crear/editar/borrar rutas, en cada deploy y **al arrancar el Panel para todos los Proyectos**. Los ficheros llevan la cabecera `# generado por vicalba-panel`; al arrancar se borran los generados que ya no corresponden a ningún Proyecto (nunca los que no la llevan, como `_proxy.yml` o uno manual). Si un Proyecto falla, se registra y se sigue.
+- Función pura `generarConfigProyecto(proyecto, rutas, ajustes)` → YAML, con tests; se escribe al crear/editar/borrar rutas, en cada deploy y **al arrancar el Panel para todos los Proyectos**. Los ficheros llevan la cabecera `# generado por vicagr-panel`; al arrancar se borran los generados que ya no corresponden a ningún Proyecto (nunca los que no la llevan, como `_proxy.yml` o uno manual). Si un Proyecto falla, se registra y se sigue.
 - Redirección www (`redireccionWww`): router aparte para el host secundario, con su propio certificado y `redirectRegex` 301 — si el DNS de `www` falla, el dominio principal no pierde su certificado. El host secundario cuenta para la unicidad. No se ofrece si el dominio ya empieza por `www.`.
 - Servicio que desaparece del compose: el deploy no falla; tras el deploy se comprueba que cada Servicio con ruta tiene contenedor y, si no, aviso en el log del deploy, ruta marcada «servicio no encontrado» y entrada en «Requiere atención».
 
@@ -106,7 +106,7 @@ La pantalla muestra también lo que no se edita: entrypoints, resolvers, versió
 
 ### Dónde vive el fichero
 
-- `traefik.yml` pasa a `/var/vicalba/traefik/static/traefik.yml`, generado por el Panel (directorio montado en Traefik y en el Panel). Se monta el **directorio**, no el fichero: si faltara el fichero, Docker crearía un directorio en su lugar.
+- `traefik.yml` pasa a `/var/vicagr/traefik/static/traefik.yml`, generado por el Panel (directorio montado en Traefik y en el Panel). Se monta el **directorio**, no el fichero: si faltara el fichero, Docker crearía un directorio en su lugar.
 - Al instalar/actualizar se copia el `traefik/traefik.yml` del repo como punto de partida (`### Al actualizar` del CHANGELOG, `dev.sh`, `scripts/guia`).
 - Imagen de Traefik fijada a una versión exacta.
 - Los backups incluyen `static/` y la restauración lo devuelve.
@@ -116,7 +116,7 @@ La pantalla muestra también lo que no se edita: entrypoints, resolvers, versió
 1. Validar con Zod y generar el YAML.
 2. Guardar `traefik.yml.prev` y escribir el nuevo.
 3. Reiniciar el contenedor Traefik (dockerode).
-4. Comprobar: contenedor running y `ping` de Traefik respondiendo (entrypoint interno `ping`, solo en `vicalba-net`) durante ~20 s.
+4. Comprobar: contenedor running y `ping` de Traefik respondiendo (entrypoint interno `ping`, solo en `vicagr-net`) durante ~20 s.
 5. Si falla: restaurar `.prev`, reiniciar, avisar en la UI con el error y el log de Traefik. Si hasta eso falla: acceso de emergencia + `docs/recuperacion.md`.
 
 La petición que pulsa «Aplicar» pasa por Traefik, así que se corta al reiniciarlo. Por eso la aplicación es una **operación en segundo plano con estado en BD** (patrón de los backups):

@@ -122,7 +122,7 @@ src/
 
 - Nunca llamar al socket Docker directamente desde un componente — siempre a través de `src/lib/docker/`
 - Toda la config de Traefik la genera el Panel — no editar a mano: la dinámica (`dynamic/<cliente>_<proyecto>.yml`,
-  con cabecera `# generado por vicalba-panel`) en `src/lib/traefik/`; la estática (`static/traefik.yml`) y
+  con cabecera `# generado por vicagr-panel`) en `src/lib/traefik/`; la estática (`static/traefik.yml`) y
   `dynamic/_proxy.yml` (TLS mínimo) en `src/lib/proxy/`
 - Las redes Docker de clientes siguen la convención `cliente-[slug]-network`
 
@@ -179,7 +179,7 @@ Antes de cada merge a `master`: invoca `/security-review`.
 - **Pino:** logging estructurado en JSON. Cada log con `level`, `msg`, `context` y `traceId`.
 - **Health check:** `GET /api/health` devuelve estado de DB, Docker daemon, Traefik (contenedor running) y certificados (`acme.json` legible), y versión del deploy; 503 si alguno falla. El healthcheck del contenedor en `docker-compose.yml` solo comprueba que responde (cualquier código): Traefik no enruta a un contenedor unhealthy.
 - **Logs de contenedor:** streaming vía SSE desde `GET /api/projects/[id]/logs` — nunca almacenar logs de contenedor en BD.
-- **Backups:** `src/lib/backups/` con restic (etiqueta `panel`, host `vicalba-panel`); programador en `src/instrumentation.ts` (comprobación cada minuto, estado en BD; al arrancar cierra las operaciones `en_curso` huérfanas); `/api/health` no los incluye a propósito (un 503 haría que Traefik dejara de enrutar el Panel).
+- **Backups:** `src/lib/backups/` con restic (etiqueta `panel`, host `vicagr-panel`); programador en `src/instrumentation.ts` (comprobación cada minuto, estado en BD; al arrancar cierra las operaciones `en_curso` huérfanas); `/api/health` no los incluye a propósito (un 503 haría que Traefik dejara de enrutar el Panel).
 
 ---
 
@@ -207,9 +207,9 @@ npm run guia             # regenera capturas y PDF de la guía (Docker, puertos 
 
 ```bash
 # Crear directorios persistentes
-mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/traefik/static /var/vicalba/repos /var/vicalba/backups
+mkdir -p /var/vicagr/traefik/dynamic /var/vicagr/traefik/static /var/vicagr/repos /var/vicagr/backups
 # El panel corre como uid 1001 y escribe en ambas (deploys, config de Traefik, backups)
-chown -R 1001:1001 /var/vicalba
+chown -R 1001:1001 /var/vicagr
 
 # Apuntar el DNS del dominio del panel a la IP de la VPS antes de arrancar
 ```
@@ -232,7 +232,7 @@ Guía paso a paso en `production.md`: instalación desde cero (§ A), actualizar
 problemas frecuentes (§ E). Resumen:
 
 ```bash
-git clone <repo> /opt/vicalba-app && cd /opt/vicalba-app
+git clone <repo> /opt/vicagr-panel && cd /opt/vicagr-panel
 cp .env.production.example .env   # rellenar
 docker compose up -d --build      # también al actualizar: el stack completo, tras git pull
 ```
@@ -250,8 +250,8 @@ Al publicar una versión con pasos manuales, añadirlos en `production.md` § B 
 ```
 
 El script crea `.env.local` automáticamente con secretos generados si no existe,
-detecta el socket Docker en macOS/Linux y crea los directorios necesarios en `/tmp/vicalba/`.
-Credenciales del seed: `admin@vicalba.local` / `dev-password-2026`
+detecta el socket Docker en macOS/Linux y crea los directorios necesarios en `/tmp/vicagr/`.
+Credenciales del seed: `admin@vicagr.local` / `dev-password-2026`
 
 ### Nota — rutas, redes de clientes y Traefik
 
@@ -306,7 +306,7 @@ La guía vive en `docs/guia-usuario.md` y el Panel la muestra en `/guia` (`src/l
 `GuiaUsuario`, `react-markdown` sin HTML crudo); entra en la imagen por la excepción de
 `.dockerignore` y su `COPY`, como el CHANGELOG. Las capturas y el PDF (`public/guia/`) los
 genera `npm run guia` (`scripts/guia/`): levanta el stack de producción como proyecto
-`vicalba-guia` con volúmenes propios, un SFTP de demostración y datos ficticios, hace las capturas
+`vicagr-guia` con volúmenes propios, un SFTP de demostración y datos ficticios, hace las capturas
 con Playwright e imprime `/guia` a PDF. `--pausa` deja el stack levantado para inspeccionarlo y
 `--limpiar` lo quita si se interrumpió. Regenerar cuando cambie la UI y revisar el diff de las
 imágenes; el texto se actualiza a mano.
@@ -314,7 +314,7 @@ imágenes; el texto se actualiza a mano.
 ### Nota — backups
 
 Configuración → Backups: destino S3 compatible, SFTP (credencial SSH del Panel) o local (`BACKUPS_LOCAL_DIR`, por defecto
-`/var/vicalba/backups`, repositorio `<dir>/restic`, aviso ámbar permanente: está en la misma VPS), copia diaria a la
+`/var/vicagr/backups`, repositorio `<dir>/restic`, aviso ámbar permanente: está en la misma VPS), copia diaria a la
 hora elegida (Europe/Madrid), 7 diarias + 4 semanales. Cada copia es un snapshot de restic con
 `panel-db.dump` (`pg_dump -Fc`) y `traefik/` (dinámica + `acme.json`). La caché de restic y el
 `known_hosts` del destino SFTP viven en `<REPOS_DIR>/.backups/`. El kit de recuperación (repositorio
@@ -332,7 +332,7 @@ en otra salen como «No se copia» (solo la exterior es elemento). Cada parte es
 (`--stdin-from-command`; nada pasa por disco) con `--stdin-filename` `/bd/<servicio>/<base>.sql`, `_roles.sql`,
 `todo.sql` o `/datos/<clave>.tar` (`nombreStdin`, `encodeURIComponent`) y etiquetas `proyecto`, `p:<id>`, `e:<hash12 de
 la clave>`, `c:<backupId>`, `o:<programado|manual|antes_de_restaurar>` (`etiquetasCopia`). Los datos se leen con un
-contenedor `vicalba-backup-*` (`busybox:1.37.0`, `tar --numeric-owner`); límites 60 min por BD y 12 h por carpeta.
+contenedor `vicagr-backup-*` (`busybox:1.37.0`, `tar --numeric-owner`); límites 60 min por BD y 12 h por carpeta.
 La copia diaria encadena Panel y luego cada Proyecto con `backupsHabilitados` bajo un único bloqueo (cancelable);
 sin contenedores se salta. Retención por par `(p, e)`: programadas 7 diarias + 4 semanales, manuales y previas 30 días
 (`--group-by host,paths`), un solo `prune` al final. Se purgan los de un Proyecto eliminado o un elemento

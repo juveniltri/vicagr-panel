@@ -31,7 +31,7 @@ export async function hacerCopia(
     comprobar = true,
   }: { retencion?: boolean; comprobar?: boolean } = {},
 ): Promise<void> {
-  const carpeta = await mkdtemp(path.join(tmpdir(), "vicalba-backup-"));
+  const carpeta = await mkdtemp(path.join(tmpdir(), "vicagr-backup-"));
   const dir = (...p: string[]) => path.posix.join(carpeta, ...p);
   try {
     if (comprobar) await conRestic(config, signal, comprobarDestino);

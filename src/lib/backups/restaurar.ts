@@ -154,7 +154,7 @@ export async function iniciarRestauracion(
     void (async () => {
       let carpeta: string | null = null;
       try {
-        carpeta = await mkdtemp(path.join(tmpdir(), "vicalba-restaurar-"));
+        carpeta = await mkdtemp(path.join(tmpdir(), "vicagr-restaurar-"));
         const destino = carpeta;
         try {
           await hacerCopia(previa.id, config, signal, { retencion: false });

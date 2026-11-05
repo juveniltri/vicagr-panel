@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { docker, generarClaveSsh, type EntornoGuia } from "./entorno";
 
 export const USUARIO_DEMO = {
-  email: "guia@vicalba.local",
+  email: "guia@vicagr.local",
   password: "guia-demo-2026",
   nombre: "Laura Martín",
 };
@@ -20,7 +20,7 @@ function salidaDeploy(
 ): string {
   const lineas = [
     "→ Clonando repositorio git@github.com:demo/repo.git",
-    "Cloning into '/var/vicalba/repos/demo'...",
+    "Cloning into '/var/vicagr/repos/demo'...",
     "→ Haciendo checkout de main",
     `→ SHA: ${sha}`,
     "→ Construyendo e iniciando contenedores",
@@ -64,7 +64,7 @@ export async function sembrar(
   entorno: EntornoGuia,
   claveSftp: { publica: string; privada: string },
 ): Promise<void> {
-  const url = `postgresql://vicalba:${entorno.DB_PASSWORD}@localhost:5434/vicalba`;
+  const url = `postgresql://vicagr:${entorno.DB_PASSWORD}@localhost:5434/vicagr`;
   // src/env.ts validates these at import time; cifrar() must use the panel's key.
   Object.assign(process.env, {
     DATABASE_URL: url,
@@ -87,7 +87,7 @@ export async function sembrar(
           passwordHash: await bcrypt.hash(USUARIO_DEMO.password, 12),
         },
         {
-          email: "carlos@vicalba.local",
+          email: "carlos@vicagr.local",
           nombre: "Carlos Ruiz",
           passwordHash: await bcrypt.hash(randomBytes(16).toString("hex"), 12),
         },
@@ -323,10 +323,10 @@ export async function sembrar(
       "exec",
       "-u",
       "1001",
-      "vicalba-panel",
+      "vicagr-panel",
       "sh",
       "-c",
-      'd=/var/vicalba/repos/acme/web/volumes/uploads; mkdir -p "$d/productos" && printf demo > "$d/logo.png" && printf demo > "$d/productos/camiseta.jpg" && printf "a,b\\n1,2\\n" > "$d/catalogo.csv"',
+      'd=/var/vicagr/repos/acme/web/volumes/uploads; mkdir -p "$d/productos" && printf demo > "$d/logo.png" && printf demo > "$d/productos/camiseta.jpg" && printf "a,b\\n1,2\\n" > "$d/catalogo.csv"',
     ]);
 
     await prisma.configuracionDeploy.upsert({

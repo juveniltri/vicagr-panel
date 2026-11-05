@@ -1,7 +1,7 @@
 import { stringify } from "yaml";
 import type { ConfiguracionProxy } from "@/lib/schemas/proxy";
 
-// Internal entrypoint for /ping: reachable from the Panel over vicalba-net,
+// Internal entrypoint for /ping: reachable from the Panel over vicagr-net,
 // never published on the VPS.
 export const PUERTO_PING = 8082;
 
@@ -31,7 +31,7 @@ export function generarTraefikEstatico(
     },
   });
   const t = config.timeouts;
-  return `# generado por vicalba-panel — se edita en Configuración → Proxy\n${stringify(
+  return `# generado por vicagr-panel — se edita en Configuración → Proxy\n${stringify(
     {
       api: { dashboard: false },
       entryPoints: {
@@ -60,7 +60,7 @@ export function generarTraefikEstatico(
       ping: { entryPoint: "ping" },
       providers: {
         // Panel and stack services, discovered by labels in docker-compose
-        docker: { exposedByDefault: false, network: "vicalba-net" },
+        docker: { exposedByDefault: false, network: "vicagr-net" },
         // Cliente Proyectos, written by the Panel
         file: { directory: "/etc/traefik/dynamic", watch: true },
       },

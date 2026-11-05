@@ -6,9 +6,9 @@ import {
 } from "./repositorio";
 
 const rutas = {
-  cacheDir: "/var/vicalba/repos/.backups/cache",
-  knownHosts: "/var/vicalba/repos/.backups/known_hosts",
-  ficheroClaveSsh: "/tmp/vicalba-backup-ssh/clave",
+  cacheDir: "/var/vicagr/repos/.backups/cache",
+  knownHosts: "/var/vicagr/repos/.backups/known_hosts",
+  ficheroClaveSsh: "/tmp/vicagr-backup-ssh/clave",
 };
 
 const s3: ConfigResuelta = {
@@ -18,7 +18,7 @@ const s3: ConfigResuelta = {
     endpoint: "https://s3.eu-central-003.backblazeb2.com",
     bucket: "mi-bucket",
     region: "eu-central-003",
-    prefijo: "vicalba",
+    prefijo: "vicagr",
     accessKeyId: "AKID",
     secretKey: "SECRETO",
   },
@@ -31,24 +31,24 @@ const sftp: ConfigResuelta = {
     host: "backup.ejemplo.com",
     puerto: 2222,
     usuario: "copias",
-    ruta: "/srv/vicalba",
+    ruta: "/srv/vicagr",
     clavePrivada: "-----BEGIN OPENSSH PRIVATE KEY-----\n...",
   },
 };
 
 const local: ConfigResuelta = {
   clave: "clave-restic",
-  destino: { tipo: "local", ruta: "/var/vicalba/backups" },
+  destino: { tipo: "local", ruta: "/var/vicagr/backups" },
 };
 
 describe("urlRepositorio", () => {
   it("local: restic dentro de la carpeta fija", () => {
-    expect(urlRepositorio(local.destino)).toBe("/var/vicalba/backups/restic");
+    expect(urlRepositorio(local.destino)).toBe("/var/vicagr/backups/restic");
   });
 
   it("S3: endpoint, bucket y prefijo", () => {
     expect(urlRepositorio(s3.destino)).toBe(
-      "s3:https://s3.eu-central-003.backblazeb2.com/mi-bucket/vicalba",
+      "s3:https://s3.eu-central-003.backblazeb2.com/mi-bucket/vicagr",
     );
   });
 
@@ -64,7 +64,7 @@ describe("urlRepositorio", () => {
 
   it("SFTP: usuario, host y ruta absoluta", () => {
     expect(urlRepositorio(sftp.destino)).toBe(
-      "sftp:copias@backup.ejemplo.com:/srv/vicalba",
+      "sftp:copias@backup.ejemplo.com:/srv/vicagr",
     );
   });
 });
@@ -73,7 +73,7 @@ describe("entornoRestic", () => {
   it("local: sin credenciales ni argumentos extra", () => {
     const { env, args } = entornoRestic(local, rutas);
     expect(env).toEqual({
-      RESTIC_REPOSITORY: "/var/vicalba/backups/restic",
+      RESTIC_REPOSITORY: "/var/vicagr/backups/restic",
       RESTIC_PASSWORD: "clave-restic",
       RESTIC_CACHE_DIR: rutas.cacheDir,
     });
@@ -84,7 +84,7 @@ describe("entornoRestic", () => {
     const { env, args } = entornoRestic(s3, rutas);
     expect(env).toEqual({
       RESTIC_REPOSITORY:
-        "s3:https://s3.eu-central-003.backblazeb2.com/mi-bucket/vicalba",
+        "s3:https://s3.eu-central-003.backblazeb2.com/mi-bucket/vicagr",
       RESTIC_PASSWORD: "clave-restic",
       RESTIC_CACHE_DIR: rutas.cacheDir,
       AWS_ACCESS_KEY_ID: "AKID",
@@ -106,7 +106,7 @@ describe("entornoRestic", () => {
   it("SFTP: sftp.command con la clave, el puerto y known_hosts persistente", () => {
     const { env, args } = entornoRestic(sftp, rutas);
     expect(env.RESTIC_REPOSITORY).toBe(
-      "sftp:copias@backup.ejemplo.com:/srv/vicalba",
+      "sftp:copias@backup.ejemplo.com:/srv/vicagr",
     );
     expect(env.RESTIC_PASSWORD).toBe("clave-restic");
     expect(args).toEqual([

@@ -21,7 +21,7 @@ import { mkdir } from "node:fs/promises";
 import { POST } from "./route";
 
 const mockSession = {
-  user: { id: "u1", email: "admin@vicalba.local" },
+  user: { id: "u1", email: "admin@vicagr.local" },
   expires: "2099-01-01",
 };
 

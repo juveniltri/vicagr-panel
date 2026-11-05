@@ -41,7 +41,7 @@ describe("LoginForm — submit", () => {
     render(<LoginForm />);
 
     fireEvent.change(screen.getByLabelText("Email"), {
-      target: { value: "admin@vicalba.com" },
+      target: { value: "admin@vicagr.com" },
     });
     fireEvent.change(screen.getByLabelText("Contraseña"), {
       target: { value: "secret123" },
@@ -52,10 +52,7 @@ describe("LoginForm — submit", () => {
     );
 
     await waitFor(() => {
-      expect(loginAction).toHaveBeenCalledWith(
-        "admin@vicalba.com",
-        "secret123",
-      );
+      expect(loginAction).toHaveBeenCalledWith("admin@vicagr.com", "secret123");
     });
   });
 

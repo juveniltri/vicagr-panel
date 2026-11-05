@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/env", () => ({
   env: {
-    REPOS_DIR: "/var/vicalba/repos",
-    BACKUPS_LOCAL_DIR: "/var/vicalba/backups",
+    REPOS_DIR: "/var/vicagr/repos",
+    BACKUPS_LOCAL_DIR: "/var/vicagr/backups",
     NODE_ENV: "test",
     DATABASE_URL: "postgresql://test",
     NEXTAUTH_SECRET: "test-secret",
@@ -155,7 +155,7 @@ const caller = () => createCaller(ctx);
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.mocked(auth).mockResolvedValue({
-    user: { id: "u1", email: "admin@vicalba.local", name: "Admin" },
+    user: { id: "u1", email: "admin@vicagr.local", name: "Admin" },
     expires: "2099-01-01",
   } as never);
   ctx = await createContext();
@@ -440,7 +440,7 @@ describe("backups.obtenerConfiguracion", () => {
         ruta: null,
         credencialId: null,
       },
-      local: { ruta: "/var/vicalba/backups", espacioLibreBytes: null },
+      local: { ruta: "/var/vicagr/backups", espacioLibreBytes: null },
       tieneClave: false,
       claveConfirmada: false,
       repositorioInicializado: false,
@@ -452,9 +452,9 @@ describe("backups.obtenerConfiguracion", () => {
   it("destino local: espacio libre de la carpeta (bavail * bsize)", async () => {
     m.configFind.mockResolvedValue({ tipoDestino: "local" });
     const c = await caller().backups.obtenerConfiguracion();
-    expect(fsm.statfs).toHaveBeenCalledWith("/var/vicalba/backups");
+    expect(fsm.statfs).toHaveBeenCalledWith("/var/vicagr/backups");
     expect(c.local).toEqual({
-      ruta: "/var/vicalba/backups",
+      ruta: "/var/vicagr/backups",
       espacioLibreBytes: 1000 * 4096,
     });
   });
@@ -513,7 +513,7 @@ describe("backups.obtenerConfiguracion", () => {
 
 describe("backups.guardarDestino — local", () => {
   const aviso =
-    "La carpeta /var/vicalba/backups no existe o el Panel no puede escribir en ella. En la VPS: mkdir -p /var/vicalba/backups && chown 1001:1001 /var/vicalba/backups";
+    "La carpeta /var/vicagr/backups no existe o el Panel no puede escribir en ella. En la VPS: mkdir -p /var/vicagr/backups && chown 1001:1001 /var/vicagr/backups";
 
   it("carpeta escribible: inicializa y guarda sin campos de S3/SFTP", async () => {
     m.configFind.mockResolvedValue(null);
@@ -521,7 +521,7 @@ describe("backups.guardarDestino — local", () => {
     const res = await caller().backups.guardarDestino({ tipo: "local" });
     expect(res).toEqual({ repositorio: "inicializado" });
     expect(fsm.access).toHaveBeenCalledWith(
-      "/var/vicalba/backups",
+      "/var/vicagr/backups",
       expect.any(Number),
     );
     expect(m.configUpsert.mock.calls[0]![0].create).toMatchObject({
@@ -584,7 +584,7 @@ describe("backups.guardarDestino — local", () => {
       claveConfirmadaEn: null,
     });
     const { kit } = await caller().backups.obtenerKit();
-    expect(kit).toContain("Repositorio:  /var/vicalba/backups/restic");
+    expect(kit).toContain("Repositorio:  /var/vicagr/backups/restic");
   });
 });
 
@@ -594,7 +594,7 @@ describe("backups.guardarDestino — más casos", () => {
     host: "backup.ejemplo.com",
     puerto: 2222,
     usuario: "copias",
-    ruta: "/srv/vicalba",
+    ruta: "/srv/vicagr",
     credencialId: "c1",
   };
 
@@ -612,7 +612,7 @@ describe("backups.guardarDestino — más casos", () => {
       sftpHost: "backup.ejemplo.com",
       sftpPuerto: 2222,
       sftpUsuario: "copias",
-      sftpRuta: "/srv/vicalba",
+      sftpRuta: "/srv/vicagr",
       sftpCredencialId: "c1",
       s3Endpoint: null,
       s3SecretKeyCifrada: null,
@@ -625,7 +625,7 @@ describe("backups.guardarDestino — más casos", () => {
       tipoDestino: "s3",
       s3Endpoint: "https://s3.ejemplo.com",
       s3Bucket: "mi-bucket",
-      s3Prefijo: "vicalba",
+      s3Prefijo: "vicagr",
       claveCifrada: "cif(K)",
       claveIv: "iv",
       claveTag: "tag",
@@ -635,11 +635,11 @@ describe("backups.guardarDestino — más casos", () => {
     await caller().backups.guardarDestino({
       ...s3Input,
       region: "eu-central-003",
-      prefijo: "vicalba",
+      prefijo: "vicagr",
     });
     expect(m.configUpsert.mock.calls[0]![0].update).toMatchObject({
       s3Region: "eu-central-003",
-      s3Prefijo: "vicalba",
+      s3Prefijo: "vicagr",
       claveCifrada: "cif(K)",
       claveConfirmadaEn: confirmada,
     });
