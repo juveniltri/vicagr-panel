@@ -9,7 +9,7 @@ export type Restic = {
 export type Snapshot = { id: string; fecha: Date; bytes: number | null };
 
 const ETIQUETA = "panel";
-const HOST = "vicalba-panel";
+const HOST = "vicagr-panel";
 // restic exit codes (0.17+): 10 = repository does not exist, 12 = wrong password.
 const SIN_REPOSITORIO = 10;
 const CLAVE_INCORRECTA = 12;

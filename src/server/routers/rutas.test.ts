@@ -103,7 +103,7 @@ const { mockLeerCertificados } = vi.hoisted(() => ({
 vi.mock("@/lib/ssl/acme", () => ({ leerCertificados: mockLeerCertificados }));
 
 vi.mock("@/env", () => ({
-  env: { PANEL_DOMAIN: "panel.vicalba.com", NODE_ENV: "test" },
+  env: { PANEL_DOMAIN: "panel.vicagr.com", NODE_ENV: "test" },
 }));
 
 import bcrypt from "bcryptjs";
@@ -134,7 +134,7 @@ beforeEach(() => {
   proyectos.clear();
   vi.clearAllMocks();
   vi.mocked(auth).mockResolvedValue({
-    user: { id: "u1", email: "admin@vicalba.local" },
+    user: { id: "u1", email: "admin@vicagr.local" },
     expires: "2099-01-01",
   } as never);
   mockContexto.mockResolvedValue({
@@ -260,12 +260,12 @@ describe("rutas.crear — dominios ocupados", () => {
     const api = await caller();
 
     await expect(
-      api.crear({ proyectoId: "p1", dominio: "panel.vicalba.com" }),
+      api.crear({ proyectoId: "p1", dominio: "panel.vicagr.com" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(
       api.crear({
         proyectoId: "p1",
-        dominio: "www.panel.vicalba.com",
+        dominio: "www.panel.vicagr.com",
         redireccionWww: "a_www",
       }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
@@ -430,7 +430,7 @@ describe("rutas — casos de borde", () => {
     try {
       await (
         await caller()
-      ).crear({ proyectoId: "p1", dominio: "panel.vicalba.com" });
+      ).crear({ proyectoId: "p1", dominio: "panel.vicagr.com" });
     } finally {
       vi.mocked(env).PANEL_DOMAIN = anterior;
     }

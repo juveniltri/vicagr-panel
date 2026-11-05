@@ -73,7 +73,7 @@ describe("generarTraefikEstatico", () => {
     expect(c.entryPoints.ping).toEqual({ address: ":8082" });
     expect(c.ping).toEqual({ entryPoint: "ping" });
     expect(c.providers).toEqual({
-      docker: { exposedByDefault: false, network: "vicalba-net" },
+      docker: { exposedByDefault: false, network: "vicagr-net" },
       file: { directory: "/etc/traefik/dynamic", watch: true },
     });
     expect(c.certificatesResolvers.letsencrypt.acme).toEqual({
@@ -86,9 +86,9 @@ describe("generarTraefikEstatico", () => {
 
   it("incluye el email de ACME, que los flags de CLI no llegaban a aplicar", () => {
     expect(
-      generar(CONFIG_PROXY_POR_DEFECTO, { acmeEmail: "ops@vicalba.com" })
+      generar(CONFIG_PROXY_POR_DEFECTO, { acmeEmail: "ops@vicagr.com" })
         .certificatesResolvers.letsencrypt.acme.email,
-    ).toBe("ops@vicalba.com");
+    ).toBe("ops@vicagr.com");
   });
 
   it("aplica IPs de confianza a los dos entrypoints, timeouts, nivel de log y access log en JSON", () => {
@@ -125,10 +125,10 @@ describe("generarTraefikEstatico — Cloudflare", () => {
 
     const conToken = generar(CONFIG_PROXY_POR_DEFECTO, {
       tokenCloudflare: true,
-      acmeEmail: "ops@vicalba.com",
+      acmeEmail: "ops@vicagr.com",
     }).certificatesResolvers;
     expect(conToken["letsencrypt-dns"].acme).toEqual({
-      email: "ops@vicalba.com",
+      email: "ops@vicagr.com",
       storage: "/letsencrypt/acme.json",
       dnsChallenge: { provider: "cloudflare" },
     });

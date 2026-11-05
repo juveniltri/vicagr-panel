@@ -50,7 +50,7 @@ describe("useTheme — setTheme", () => {
   it("guarda el nuevo tema en localStorage", () => {
     const { result } = renderHook(() => useTheme());
     act(() => result.current.setTheme("light"));
-    expect(localStorage.getItem("vicalba-theme")).toBe("light");
+    expect(localStorage.getItem("vicagr-theme")).toBe("light");
   });
 
   it("vuelve a dark al llamar setTheme('dark')", () => {
@@ -59,7 +59,7 @@ describe("useTheme — setTheme", () => {
     act(() => result.current.setTheme("dark"));
     expect(result.current.theme).toBe("dark");
     expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(localStorage.getItem("vicalba-theme")).toBe("dark");
+    expect(localStorage.getItem("vicagr-theme")).toBe("dark");
   });
 });
 

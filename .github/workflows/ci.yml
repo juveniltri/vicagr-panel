@@ -61,7 +61,7 @@ jobs:
         run: npm run test:unit -- --coverage
         env:
           NODE_ENV: test
-          DATABASE_URL: "postgresql://ci:ci@localhost:5432/vicalba_ci"
+          DATABASE_URL: "postgresql://ci:ci@localhost:5432/vicagr_ci"
           NEXTAUTH_SECRET: "ci-nextauth-secret-only-for-build-validation"
           NEXTAUTH_URL: "http://localhost:3000"
           GITHUB_WEBHOOK_SECRET: "ci-webhook-secret-key"
@@ -94,7 +94,7 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
-          DATABASE_URL: "postgresql://ci:ci@localhost:5432/vicalba_ci"
+          DATABASE_URL: "postgresql://ci:ci@localhost:5432/vicagr_ci"
           NEXTAUTH_SECRET: "ci-nextauth-secret-only-for-build-validation"
           NEXTAUTH_URL: "http://localhost:3000"
           GITHUB_WEBHOOK_SECRET: "ci-webhook-secret-key"
@@ -132,7 +132,7 @@ jobs:
         env:
           POSTGRES_USER: ci
           POSTGRES_PASSWORD: ci
-          POSTGRES_DB: vicalba_ci
+          POSTGRES_DB: vicagr_ci
         ports:
           - 5432:5432
         options: >-
@@ -141,7 +141,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: "postgresql://ci:ci@localhost:5432/vicalba_ci"
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/vicagr_ci"
     steps:
       - uses: actions/checkout@v7
 

@@ -23,16 +23,16 @@ describe("auxiliar", () => {
   it("fija la imagen y el nombre", () => {
     expect(IMAGEN_AUXILIAR).toBe("busybox:1.37.0");
     expect(nombreAuxiliar("b1", "datos:./x")).toBe(
-      `vicalba-backup-b1-${hashClave("datos:./x")}`,
+      `vicagr-backup-b1-${hashClave("datos:./x")}`,
     );
   });
 
   it("elimina con docker rm -f", async () => {
     mockEjecutar.mockResolvedValue("");
-    await eliminarAuxiliar("vicalba-backup-x");
+    await eliminarAuxiliar("vicagr-backup-x");
     expect(mockEjecutar).toHaveBeenCalledWith(
       "docker",
-      ["rm", "-f", "vicalba-backup-x"],
+      ["rm", "-f", "vicagr-backup-x"],
       {},
     );
   });
@@ -62,8 +62,8 @@ describe("auxiliar", () => {
       1,
       "docker",
       // Real docker matches name filters as an unanchored regex: without "^"
-      // a Cliente container such as "acme-vicalba-backup-db-1" would match.
-      ["ps", "-a", "--filter", "name=^vicalba-backup-", "-q"],
+      // a Cliente container such as "acme-vicagr-backup-db-1" would match.
+      ["ps", "-a", "--filter", "name=^vicagr-backup-", "-q"],
       {},
     );
     expect(mockEjecutar).toHaveBeenNthCalledWith(

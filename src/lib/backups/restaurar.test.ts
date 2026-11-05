@@ -104,13 +104,13 @@ describe("buscarFichero", () => {
   afterAll(() => rm(tmp, { recursive: true, force: true }));
   it("encuentra el fichero a cualquier profundidad o devuelve null", async () => {
     tmp = await mkdtemp(path.join(tmpdir(), "buscar-"));
-    await mkdir(path.join(tmp, "tmp", "vicalba-backup-x"), { recursive: true });
+    await mkdir(path.join(tmp, "tmp", "vicagr-backup-x"), { recursive: true });
     await writeFile(
-      path.join(tmp, "tmp", "vicalba-backup-x", "panel-db.dump"),
+      path.join(tmp, "tmp", "vicagr-backup-x", "panel-db.dump"),
       "x",
     );
     expect(await buscarFichero(tmp, "panel-db.dump")).toBe(
-      path.join(tmp, "tmp", "vicalba-backup-x", "panel-db.dump"),
+      path.join(tmp, "tmp", "vicagr-backup-x", "panel-db.dump"),
     );
     expect(await buscarFichero(tmp, "no-existe")).toBeNull();
   });

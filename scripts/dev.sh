@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Entorno de desarrollo local para vicalba-app.
+# Entorno de desarrollo local para vicagr-panel.
 # Uso: ./scripts/dev.sh [start|stop|reset|status]
 set -euo pipefail
 
@@ -51,11 +51,11 @@ setup_env() {
     log "Creando .env.local con secretos generados..."
     cat > "$ENV_FILE" <<EOF
 NODE_ENV=development
-REPOS_DIR=/tmp/vicalba/repos
-TRAEFIK_DYNAMIC_DIR=/tmp/vicalba/traefik/dynamic
-TRAEFIK_STATIC_DIR=/tmp/vicalba/traefik/static
-ACME_JSON_PATH=/tmp/vicalba/traefik/acme.json
-DATABASE_URL=postgresql://vicalba:dev-password@localhost:5432/vicalba
+REPOS_DIR=/tmp/vicagr/repos
+TRAEFIK_DYNAMIC_DIR=/tmp/vicagr/traefik/dynamic
+TRAEFIK_STATIC_DIR=/tmp/vicagr/traefik/static
+ACME_JSON_PATH=/tmp/vicagr/traefik/acme.json
+DATABASE_URL=postgresql://vicagr:dev-password@localhost:5432/vicagr
 NEXTAUTH_SECRET=$(openssl rand -base64 32)
 NEXTAUTH_URL=http://localhost:3000
 GITHUB_WEBHOOK_SECRET=$(openssl rand -hex 32)
@@ -85,15 +85,15 @@ load_env() {
   source "$ENV_FILE"
   set +a
   # .env.local created before 2.3.0 lacks it; the default (/etc/traefik/static) is for the container
-  export TRAEFIK_STATIC_DIR="${TRAEFIK_STATIC_DIR:-/tmp/vicalba/traefik/static}"
+  export TRAEFIK_STATIC_DIR="${TRAEFIK_STATIC_DIR:-/tmp/vicagr/traefik/static}"
 }
 
 # ─── Directorios locales ──────────────────────────────────────────────────────
 setup_dirs() {
-  mkdir -p /tmp/vicalba/repos /tmp/vicalba/traefik/dynamic /tmp/vicalba/traefik/static
+  mkdir -p /tmp/vicagr/repos /tmp/vicagr/traefik/dynamic /tmp/vicagr/traefik/static
   # acme.json vacío para que leerEstadoSSL no falle al leer el archivo
-  touch /tmp/vicalba/traefik/acme.json
-  ok "Directorios en /tmp/vicalba/ listos"
+  touch /tmp/vicagr/traefik/acme.json
+  ok "Directorios en /tmp/vicagr/ listos"
 }
 
 # ─── PostgreSQL ───────────────────────────────────────────────────────────────
@@ -150,7 +150,7 @@ case "$CMD" in
     seed
     echo ""
     echo -e "  ${GREEN}Panel listo en http://localhost:3000${NC}"
-    echo "  Usuario:  admin@vicalba.local"
+    echo "  Usuario:  admin@vicagr.local"
     echo "  Password: dev-password-2026"
     echo ""
     echo "  Ctrl+C → para el servidor  |  ./scripts/dev.sh stop → para la BD"
@@ -171,7 +171,7 @@ case "$CMD" in
     log "Reseteando BD (borra todo y recrea)..."
     (cd "$ROOT" && npm run db:reset)
     echo ""
-    ok "BD reseteada — usuario: admin@vicalba.local / dev-password-2026"
+    ok "BD reseteada — usuario: admin@vicagr.local / dev-password-2026"
     ;;
 
   status)

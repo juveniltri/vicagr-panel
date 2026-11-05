@@ -36,9 +36,7 @@ describe("BotonFijar", () => {
 
     expect(boton).toHaveAttribute("aria-pressed", "true");
     expect(boton).toHaveAccessibleName("Quitar de fijados");
-    expect(JSON.parse(localStorage.getItem("vicalba:fijados")!)).toEqual([
-      "p1",
-    ]);
+    expect(JSON.parse(localStorage.getItem("vicagr:fijados")!)).toEqual(["p1"]);
   });
 });
 

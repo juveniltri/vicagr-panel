@@ -1,4 +1,4 @@
-# Estrategia de Testing — vicalba-app
+# Estrategia de Testing — vicagr-panel
 
 ## Regla 100/80/0
 

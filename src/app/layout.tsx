@@ -20,7 +20,7 @@ const jetBrainsMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "vicalba-app",
+  title: "vicagr-panel",
   description: "Panel de gestión de infraestructura",
   robots: { index: false, follow: false },
 };
@@ -39,7 +39,7 @@ export default function RootLayout({
         {/* Aplica el tema guardado antes del primer paint para evitar flash */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('vicalba-theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t;}else if(window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.dataset.theme='light';}}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('vicagr-theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t;}else if(window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.dataset.theme='light';}}catch(e){}})();`,
           }}
         />
       </head>

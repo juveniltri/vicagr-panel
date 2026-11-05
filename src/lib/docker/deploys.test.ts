@@ -218,20 +218,18 @@ describe("cancelarDeploy", () => {
     const deploy = ejecutarDeploy(baseParams);
     await vi.waitFor(() => expect(mockDeployProyecto).toHaveBeenCalled());
 
-    expect(cancelarDeploy("p1", "Cancelado por admin@vicalba.local")).toBe(
-      true,
-    );
+    expect(cancelarDeploy("p1", "Cancelado por admin@vicagr.local")).toBe(true);
 
     expect(await deploy).toEqual({
       resultado: "cancelado",
-      output: "Cancelado por admin@vicalba.local",
+      output: "Cancelado por admin@vicagr.local",
       porTimeout: false,
     });
     expect(mockDeployUpdate).toHaveBeenCalledWith({
       where: { id: "d1" },
       data: {
         resultado: "cancelado",
-        output: "Cancelado por admin@vicalba.local",
+        output: "Cancelado por admin@vicagr.local",
         finalizadoEn: expect.any(Date),
       },
     });
@@ -249,10 +247,10 @@ describe("cancelarDeploy", () => {
       (r) => (fin = r),
     );
 
-    cancelarDeploy("p1", "Cancelado por admin@vicalba.local");
+    cancelarDeploy("p1", "Cancelado por admin@vicagr.local");
     await deploy;
 
-    expect(lineas.at(-1)).toBe("⊘ Cancelado por admin@vicalba.local");
+    expect(lineas.at(-1)).toBe("⊘ Cancelado por admin@vicagr.local");
     expect(fin).toBe("cancelado");
   });
 

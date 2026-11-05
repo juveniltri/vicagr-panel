@@ -16,7 +16,7 @@ const smtpConfig = {
   smtpPort: 587,
   smtpUser: "user@ejemplo.com",
   smtpPass: "supersecret",
-  remitente: "panel@vicalba.com",
+  remitente: "panel@example.com",
   destinatario: "admin@cliente.com",
 };
 
@@ -115,6 +115,6 @@ describe("enviarEmail — avisos de backup", () => {
       resultado: "error",
     });
     const { subject } = mockSendMail.mock.calls[0][0] as { subject: string };
-    expect(subject).toBe("[vicalba] Backup error — panel");
+    expect(subject).toBe("[vicagr] Backup error — panel");
   });
 });

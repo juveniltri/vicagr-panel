@@ -13,11 +13,11 @@ describe("generarClave", () => {
 describe("kitRecuperacion", () => {
   it("incluye repositorio, clave, recordatorio de ENCRYPTION_KEY y el procedimiento", () => {
     const kit = kitRecuperacion(
-      "s3:https://s3.ejemplo.com/bucket/vicalba",
+      "s3:https://s3.ejemplo.com/bucket/vicagr",
       "CLAVE",
     );
     expect(kit).toContain(
-      "Repositorio:  s3:https://s3.ejemplo.com/bucket/vicalba",
+      "Repositorio:  s3:https://s3.ejemplo.com/bucket/vicagr",
     );
     expect(kit).toContain("Clave:        CLAVE");
     expect(kit).toContain("ENCRYPTION_KEY");
@@ -25,8 +25,8 @@ describe("kitRecuperacion", () => {
   });
 
   it("local: el repositorio es la ruta y no hay credenciales de destino", () => {
-    const kit = kitRecuperacion("/var/vicalba/backups/restic", "CLAVE");
-    expect(kit).toContain("Repositorio:  /var/vicalba/backups/restic");
+    const kit = kitRecuperacion("/var/vicagr/backups/restic", "CLAVE");
+    expect(kit).toContain("Repositorio:  /var/vicagr/backups/restic");
     expect(kit).toContain("Credenciales: ninguna");
     expect(kit).not.toContain("S3 / usuario SFTP");
   });
