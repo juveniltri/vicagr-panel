@@ -1,4 +1,4 @@
-# Dominio — vicalba-app
+# Dominio — vicagr-panel
 
 ## Qué hace este sistema
 
@@ -6,14 +6,14 @@ Panel de control de infraestructura para gestionar proyectos Docker en una VPS. 
 
 ## Actores
 
-| Actor | Descripción |
-|---|---|
-| **Operador** | Miembro del equipo técnico — único tipo de usuario con acceso al panel |
-| **Cliente** | Entidad contratante — nunca accede al panel directamente |
-| **GitHub** | Sistema externo que envía webhooks al panel para trigger de deploys |
+| Actor             | Descripción                                                                   |
+| ----------------- | ----------------------------------------------------------------------------- |
+| **Operador**      | Miembro del equipo técnico — único tipo de usuario con acceso al panel        |
+| **Cliente**       | Entidad contratante — nunca accede al panel directamente                      |
+| **GitHub**        | Sistema externo que envía webhooks al panel para trigger de deploys           |
 | **Docker daemon** | Proceso del SO que ejecuta los contenedores — el panel lo controla vía socket |
-| **Traefik** | Proxy inverso — recibe config dinámica del panel y enruta tráfico |
-| **Let's Encrypt** | CA que emite certificados SSL — orquestado por Traefik |
+| **Traefik**       | Proxy inverso — recibe config dinámica del panel y enruta tráfico             |
+| **Let's Encrypt** | CA que emite certificados SSL — orquestado por Traefik                        |
 
 ## Flujos principales
 
@@ -59,13 +59,13 @@ Operador → Selecciona proyecto en el dashboard
 
 ## Módulos del sistema
 
-| Módulo | Responsabilidad |
-|---|---|
-| `auth` | Sesiones de operadores, NextAuth v5 |
-| `clients` | CRUD de clientes |
-| `projects` | CRUD de proyectos, configuración de deploy |
-| `docker` | Comunicación con Docker daemon via dockerode |
-| `traefik` | Generación de config dinámica para Traefik |
-| `webhooks` | Recepción y validación de webhooks de GitHub |
-| `deployments` | Orquestación del proceso de deploy |
-| `logs` | Streaming SSE de logs de contenedor |
+| Módulo        | Responsabilidad                              |
+| ------------- | -------------------------------------------- |
+| `auth`        | Sesiones de operadores, NextAuth v5          |
+| `clients`     | CRUD de clientes                             |
+| `projects`    | CRUD de proyectos, configuración de deploy   |
+| `docker`      | Comunicación con Docker daemon via dockerode |
+| `traefik`     | Generación de config dinámica para Traefik   |
+| `webhooks`    | Recepción y validación de webhooks de GitHub |
+| `deployments` | Orquestación del proceso de deploy           |
+| `logs`        | Streaming SSE de logs de contenedor          |

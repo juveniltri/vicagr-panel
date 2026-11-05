@@ -20,7 +20,7 @@ const jetBrainsMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "vicalba-app",
+  title: "vicagr-panel",
   description: "Panel de gestión de infraestructura",
   robots: { index: false, follow: false },
 };

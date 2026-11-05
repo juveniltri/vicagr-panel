@@ -1,4 +1,4 @@
-# Lenguaje Ubicuo — vicalba-app
+# Lenguaje Ubicuo — vicagr-panel
 
 Glosario de términos del dominio de este proyecto. Todos los ficheros, variables, rutas, mensajes de error y documentación deben usar exactamente estos nombres.
 
@@ -8,7 +8,7 @@ Glosario de términos del dominio de este proyecto. Todos los ficheros, variable
 
 | Término                     | Definición                                                                                                                                                                                                             |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Panel**                   | La aplicación web de gestión — el propio vicalba-app                                                                                                                                                                   |
+| **Panel**                   | La aplicación web de gestión — el propio vicagr-panel                                                                                                                                                                  |
 | **VPS**                     | El servidor virtual privado que aloja todos los proyectos. Hay una única VPS.                                                                                                                                          |
 | **Cliente**                 | Entidad que contrata los servicios. Tiene uno o más proyectos. Nunca accede al panel.                                                                                                                                  |
 | **Proyecto**                | Unidad de despliegue asociada a un cliente. Corresponde a un `docker-compose.yml` y una red Docker aislada.                                                                                                            |

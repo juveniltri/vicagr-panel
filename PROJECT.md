@@ -1,17 +1,17 @@
-# vicalba-app
+# vicagr-panel
 
 ## Metadata
 
-| Campo            | Valor                                      |
-| ---------------- | ------------------------------------------ |
-| Cliente          | Interno (equipo técnico, 2 usuarios)       |
-| Tipo             | Panel de gestión de infraestructura        |
-| Estado           | Idea                                       |
-| Inicio estimado  | 2026-06-04                                 |
-| Entrega estimada | MVP Fase 1 — TBD                           |
-| URL producción   |                                            |
-| URL staging      |                                            |
-| Repositorio      |                                            |
+| Campo            | Valor                                |
+| ---------------- | ------------------------------------ |
+| Cliente          | Interno (equipo técnico, 2 usuarios) |
+| Tipo             | Panel de gestión de infraestructura  |
+| Estado           | Idea                                 |
+| Inicio estimado  | 2026-06-04                           |
+| Entrega estimada | MVP Fase 1 — TBD                     |
+| URL producción   |                                      |
+| URL staging      |                                      |
+| Repositorio      |                                      |
 
 ## Descripción
 

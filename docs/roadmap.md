@@ -1,4 +1,4 @@
-# Roadmap — vicalba-app
+# Roadmap — vicagr-panel
 
 Ideas, features y mejoras pendientes. Sin orden de prioridad hasta que se planifiquen.
 Para convertir items en issues de GitHub: `/to-issues`.
