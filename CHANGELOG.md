@@ -5,6 +5,32 @@ Novedades. Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES
 cada versión con su fecha, un resumen de una línea y los apartados Novedades,
 Correcciones y Seguridad.
 
+## [3.0.0] - 2026-11-05
+
+El Panel pasa a llamarse vicagr-panel y los nombres internos de la VPS cambian de `vicalba` a
+`vicagr`. Esta versión exige migrar la VPS antes de actualizar.
+
+### Novedades
+
+- **Nuevo nombre**: el logo, el login, la guía y el asunto de los avisos por email dicen `vicagr`.
+- **Nombres internos de la VPS**: carpeta de datos `/var/vicagr`, red `vicagr-net`, contenedores
+  `vicagr-db` y `vicagr-panel`, y base de datos y usuario `vicagr`.
+- El tema, los Proyectos fijados y las novedades vistas del navegador se restablecen una vez.
+
+### Al actualizar
+
+**No actualices con `docker compose up -d --build` a secas**: crearía una base de datos y unos
+certificados vacíos y el Panel arrancaría sin sus datos.
+
+Sigue `production.md` § B1a, con un backup manual reciente y sin deploys en curso. En resumen: volcado
+de la BD, parar el stack, mover `/var/vicalba` a `/var/vicagr`, copiar el volumen de certificados,
+cambiar `vicalba` por `vicagr` en el `.env` y en el `traefik.yml` del Panel, crear la BD nueva y
+restaurar el volcado. Después, redeploya cada Proyecto desde el Panel. Los Proyectos dejan de
+responder por dominio mientras dura la migración.
+
+Las copias de backup anteriores siguen en el repositorio con el host antiguo (`vicalba-panel`); las
+nuevas usan `vicagr-panel`.
+
 ## [2.5.0] - 2026-11-01
 
 Entrada al Panel con passkey a través de Pocket ID, y fuentes servidas desde el propio Panel.

@@ -258,7 +258,7 @@ docker compose up -d --build
 Los Proyectos redesplegados con la versión nueva siguen funcionando; vuelve a desplegarlos si
 algo de su configuración depende de la versión anterior.
 
-### B1a. Renombrado `vicalba` → `vicagr` (primera versión tras la 2.5.0)
+### B1a. Renombrado `vicalba` → `vicagr` (versión 3.0.0)
 
 Cambian `/var/vicalba` → `/var/vicagr`, la red `vicalba-net` → `vicagr-net`, los contenedores
 `vicalba-db` y `vicalba-panel` → `vicagr-db` y `vicagr-panel`, la BD y el usuario `vicalba` → `vicagr`,
