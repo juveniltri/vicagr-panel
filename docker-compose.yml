@@ -1,3 +1,7 @@
+# NOTE: fijo para que los volúmenes (db-data, letsencrypt) no dependan del nombre de la
+# carpeta del checkout: sin esto, renombrarla crea volúmenes vacíos y pierde BD y certificados.
+name: vicalba-app
+
 # Docker no limita los logs de los contenedores: sin esto llenan el disco de la VPS.
 x-logging: &logging
   driver: json-file
@@ -63,7 +67,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── Panel vicalba-app ────────────────────────────────────────────────────────
+  # ── Panel vicagr-panel ────────────────────────────────────────────────────────
   panel:
     build: .
     container_name: vicalba-panel

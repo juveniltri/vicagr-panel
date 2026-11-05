@@ -1,4 +1,4 @@
-# vicalba-app
+# vicagr-panel
 
 ## Qué es este proyecto
 
@@ -370,7 +370,7 @@ se rechaza, y `.panel/` solo se restaura a mano (`docs/recuperacion.md`).
 
 Términos clave — usar exactamente estos nombres en ficheros, variables y mensajes:
 
-- **Panel** — la propia aplicación vicalba-app
+- **Panel** — la propia aplicación vicagr-panel
 - **VPS** — el servidor único que aloja todo
 - **Cliente** — entidad contratante; nunca accede al panel
 - **Proyecto** — unidad de despliegue de un cliente (= un `docker-compose.yml` + red Docker)

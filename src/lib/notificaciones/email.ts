@@ -29,7 +29,7 @@ export async function enviarEmail(
   await transporter.sendMail({
     from: config.remitente,
     to: config.destinatario,
-    subject: `[vicalba] ${titulo} ${payload.resultado} — ${payload.proyectoNombre}`,
+    subject: `[vicagr] ${titulo} ${payload.resultado} — ${payload.proyectoNombre}`,
     text: [
       `Proyecto: ${payload.proyectoNombre}`,
       `Cliente: ${payload.clienteSlug}`,

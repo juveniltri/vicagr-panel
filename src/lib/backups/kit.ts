@@ -10,7 +10,7 @@ export function kitRecuperacion(repositorio: string, clave: string): string {
     ? "Credenciales: ninguna (carpeta de la VPS; sácala de la VPS, ver docs/recuperacion.md)"
     : "Credenciales: las del destino (tu cuenta de S3 / usuario SFTP)";
   return [
-    "Kit de recuperación — vicalba-app",
+    "Kit de recuperación — vicagr-panel",
     `Repositorio:  ${repositorio}`,
     `Clave:        ${clave}`,
     credenciales,

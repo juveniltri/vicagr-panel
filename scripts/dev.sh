@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Entorno de desarrollo local para vicalba-app.
+# Entorno de desarrollo local para vicagr-panel.
 # Uso: ./scripts/dev.sh [start|stop|reset|status]
 set -euo pipefail
 

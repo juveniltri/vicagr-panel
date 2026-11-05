@@ -1,4 +1,4 @@
-# vicalba-app
+# vicagr-panel
 
 Panel de control de infraestructura al estilo Coolify, diseñado para uso interno. Gestiona todos los proyectos Docker en una única VPS: proxy inverso Traefik, SSL automático con Let's Encrypt, deploys desde GitHub vía webhooks y logs en tiempo real.
 

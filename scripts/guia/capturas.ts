@@ -291,6 +291,6 @@ export async function imprimirPdf(page: Page): Promise<void> {
     displayHeaderFooter: true,
     headerTemplate: "<span></span>",
     footerTemplate:
-      '<div style="font-size:8px;width:100%;text-align:center;color:#666">Guía de uso — vicalba-app · <span class="pageNumber"></span> / <span class="totalPages"></span></div>',
+      '<div style="font-size:8px;width:100%;text-align:center;color:#666">Guía de uso — vicagr-panel · <span class="pageNumber"></span> / <span class="totalPages"></span></div>',
   });
 }
