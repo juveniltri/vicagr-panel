@@ -63,7 +63,7 @@ beforeEach(() => {
 describe("Sidebar", () => {
   it("renderiza el nombre de la aplicación", () => {
     render(<Sidebar proyectos={proyectos} usuario={usuario} />);
-    expect(screen.getByText("vicalba")).toBeInTheDocument();
+    expect(screen.getByText("vicagr")).toBeInTheDocument();
   });
 
   it("renderiza el enlace Dashboard", () => {

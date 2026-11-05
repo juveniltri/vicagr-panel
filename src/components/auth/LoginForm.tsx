@@ -44,7 +44,7 @@ export function LoginForm({
   return (
     <div className="w-full max-w-sm p-8 bg-surface border border-border rounded-[var(--radius-md)]">
       <h1 className="font-display text-xl font-bold text-text-primary mb-6">
-        VICALBA
+        VICAGR
       </h1>
       {errorOidc && (
         <div

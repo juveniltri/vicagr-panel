@@ -66,7 +66,7 @@ export function Sidebar({
     <aside className="print:hidden flex flex-col gap-6 bg-sidebar border-b md:border-b-0 md:border-r border-border px-3.5 py-4 md:py-5 min-h-0 md:h-screen md:overflow-y-auto">
       <div className="flex items-center gap-2.5 px-2">
         <span className="font-display text-[17px] font-bold -tracking-[0.02em]">
-          vicalba
+          vicagr
         </span>
         <span
           className="w-2 h-4 bg-[var(--color-accent)] animate-pulse"
