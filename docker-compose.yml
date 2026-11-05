@@ -23,7 +23,7 @@ services:
   # ── Traefik — proxy inverso + SSL automático ─────────────────────────────────
   traefik:
     # Fixed version: an upgrade is a decision, not a side effect of a restart.
-    image: traefik:v3.7.15
+    image: traefik:v3.7.16
     container_name: traefik
     restart: unless-stopped
     logging: *logging
