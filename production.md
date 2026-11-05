@@ -258,6 +258,98 @@ docker compose up -d --build
 Los Proyectos redesplegados con la versión nueva siguen funcionando; vuelve a desplegarlos si
 algo de su configuración depende de la versión anterior.
 
+### B1a. Renombrado `vicalba` → `vicagr` (primera versión tras la 2.5.0)
+
+Cambian `/var/vicalba` → `/var/vicagr`, la red `vicalba-net` → `vicagr-net`, los contenedores
+`vicalba-db` y `vicalba-panel` → `vicagr-db` y `vicagr-panel`, la BD y el usuario `vicalba` → `vicagr`,
+el proyecto de compose (`vicalba-app` → `vicagr`, con él los volúmenes `vicagr_db-data` y
+`vicagr_letsencrypt`) y el host de restic (`vicalba-panel` → `vicagr-panel`). Docker no renombra redes
+ni volúmenes: se crean nuevos y se copian los datos. **Hazlo con el stack parado**: los dominios de
+todos los Proyectos dejan de responder unos minutos.
+
+Parte de una VPS ya en la 2.5.0, con el checkout aún en `/opt/vicalba-app`, un backup manual
+reciente y ningún deploy en curso. Antes, el volcado de la BD fuera de Docker:
+
+```bash
+cd /opt/vicalba-app
+docker exec vicalba-db pg_dump -U vicalba -Fc vicalba > ~/panel-db-rename.dump && ls -lh ~/panel-db-rename.dump
+```
+
+1. **Parar, mover y preparar** (se para con el compose viejo, y solo después se cambia de rama):
+
+   ```bash
+   docker compose down                      # sin -v: no borra volúmenes
+   mv /var/vicalba /var/vicagr
+   git fetch --tags && git checkout master && git pull
+   docker compose build
+   docker compose up --no-start             # crea red y volúmenes nuevos, sin arrancar
+   ```
+
+2. **Certificados** al volumen nuevo (conserva el `600` de `acme.json`, y no pide certificados nuevos):
+
+   ```bash
+   docker run --rm -v vicalba-app_letsencrypt:/from:ro -v vicagr_letsencrypt:/to alpine sh -c 'cp -a /from/. /to/'
+   ```
+
+3. **`.env`**: copia y reemplazo de `vicalba` por `vicagr` (afecta a `DATABASE_URL`: usuario, base
+   y host `vicagr-db`; la contraseña no cambia):
+
+   ```bash
+   cp -p .env ~/env-antes-rename
+   sed -i 's/vicalba/vicagr/g' .env
+   ```
+
+4. **Config estática de Traefik** (apunta a la red vieja; `.prev` es la copia que restaura «Aplicar»
+   si falla):
+
+   ```bash
+   sed -i 's/vicalba-net/vicagr-net/g; s/generado por vicalba-panel/generado por vicagr-panel/' \
+     /var/vicagr/traefik/static/traefik.yml /var/vicagr/traefik/static/traefik.yml.prev
+   ```
+
+5. **BD nueva y restaurar el volcado**, y después el resto:
+
+   ```bash
+   docker compose up -d db
+   until [ "$(docker inspect -f '{{.State.Health.Status}}' vicagr-db)" = healthy ]; do sleep 2; done
+   docker exec -i vicagr-db pg_restore -U vicagr -d vicagr --no-owner --no-acl < ~/panel-db-rename.dump
+   docker compose up -d
+   ```
+
+6. **Redeployar cada Proyecto desde el Panel**: sus contenedores guardan las rutas de bind mount con
+   `/var/vicalba`, y un reinicio del servidor los dejaría sin arrancar hasta recrearlos.
+
+**Comprobaciones:** `curl https://panel.tudominio.com/api/health` con los cuatro checks en `ok`;
+login; los dominios de los Proyectos abren tras redeployar; Configuración → Proxy sin avisos; y una
+copia de Backups manual termina bien.
+
+**Volver atrás** (solo hasta el paso 5; los volúmenes viejos `vicalba-app_*` no se tocan):
+
+```bash
+docker compose down
+mv /var/vicagr /var/vicalba
+cp -p ~/env-antes-rename .env
+git checkout v2.5.0
+docker compose up -d --build
+```
+
+**Después, y no antes de unos días de uso:**
+
+- Borrar los volúmenes y el volcado viejos: `docker volume rm vicalba-app_db-data vicalba-app_letsencrypt`
+  y `rm ~/panel-db-rename.dump ~/env-antes-rename` (el `.env` copiado guarda las contraseñas).
+- Renombrar el checkout (`mv /opt/vicalba-app /opt/vicagr-panel`); el proyecto de compose es
+  `vicagr` y los volúmenes no cambian. Si se renombra también el repositorio de GitHub:
+  `git remote set-url origin <url nueva>` y revisar el webhook y las protecciones de rama.
+- **Backups:** las copias de antes del renombrado siguen en el repositorio con el host
+  `vicalba-panel`. Mientras no se unifiquen, la retención las trata como otro grupo y no caducan.
+  Pendiente de probar en la VPS de desarrollo: `restic rewrite --new-host vicagr-panel --forget`
+  con el kit de recuperación, con el Panel sin hacer copias.
+
+> El resto de la guía está escrito con los nombres nuevos (`vicagr-*`). En una VPS que aún no se
+> ha migrado, sustituye `vicagr` por `vicalba` en los comandos de § B2a…B6; y una VPS ya migrada
+> solo puede volver a una versión anterior deshaciendo antes este procedimiento, como indica
+> «Volver atrás».
+
 ### B2a. A la 2.5.0 (login con Pocket ID y fuentes locales)
 
 Si la VPS está en la **2.3.x** o anterior, haz antes § B2b, y también § B3 y § B4 si le corresponden:
