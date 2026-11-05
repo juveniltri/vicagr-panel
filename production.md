@@ -7,7 +7,7 @@ versión nueva (§ B, con los pasos concretos de cada versión), **configurar Cl
 una copia de seguridad en otra VPS: `docs/recuperacion.md`.
 
 Los comandos se ejecutan en la VPS como `root` salvo que se diga otra cosa. El repositorio vive
-en `/opt/vicalba-app` y los datos persistentes en `/var/vicalba`.
+en `/opt/vicagr-panel` y los datos persistentes en `/var/vicagr`.
 
 ---
 
@@ -47,9 +47,9 @@ En el firewall del proveedor (Hetzner Cloud Firewall u otro), reglas **Inbound**
 ### A4. Directorios persistentes
 
 ```bash
-mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/traefik/static /var/vicalba/repos /var/vicalba/backups
+mkdir -p /var/vicagr/traefik/dynamic /var/vicagr/traefik/static /var/vicagr/repos /var/vicagr/backups
 # El Panel corre como uid 1001 y escribe en todas
-chown -R 1001:1001 /var/vicalba
+chown -R 1001:1001 /var/vicagr
 ```
 
 - `traefik/dynamic`: la configuración de los dominios de cada Proyecto, que genera el Panel.
@@ -62,13 +62,13 @@ chown -R 1001:1001 /var/vicalba
 ### A5. Clonar el repositorio
 
 ```bash
-git clone git@github.com:juveniltri/vicalba-app.git /opt/vicalba-app
-cd /opt/vicalba-app
+git clone git@github.com:juveniltri/vicagr-panel.git /opt/vicagr-panel
+cd /opt/vicagr-panel
 git checkout master
 ```
 
 > Si la VPS no tiene clave SSH con acceso al repositorio, usa HTTPS con un token:
-> `https://<TOKEN>@github.com/juveniltri/vicalba-app.git`
+> `https://<TOKEN>@github.com/juveniltri/vicagr-panel.git`
 
 ### A6. DNS
 
@@ -111,7 +111,7 @@ El `.env` final:
 
 ```env
 DB_PASSWORD=<contraseña-segura>
-DATABASE_URL=postgresql://vicalba:<DB_PASSWORD>@db:5432/vicalba
+DATABASE_URL=postgresql://vicagr:<DB_PASSWORD>@db:5432/vicagr
 NEXTAUTH_SECRET=<openssl base64>
 NEXTAUTH_URL=https://panel.tudominio.com
 PANEL_DOMAIN=panel.tudominio.com
@@ -146,9 +146,9 @@ docker logs -f traefik              # certificados: busca errores de "acme"
 ### A9. Comprobar
 
 ```bash
-docker compose ps                                   # traefik, vicalba-db, vicalba-panel: Up
+docker compose ps                                   # traefik, vicagr-db, vicagr-panel: Up
 curl https://panel.tudominio.com/api/health         # {"status":"ok",...}
-ls /var/vicalba/traefik/static                      # traefik.yml
+ls /var/vicagr/traefik/static                      # traefik.yml
 ```
 
 Si `/api/health` no responde tras 2 minutos, ve a § E.
@@ -160,7 +160,7 @@ Panel** (el host no tiene Node):
 
 ```bash
 docker compose exec panel node -e "require('bcryptjs').hash('TU_CONTRASEÑA', 12).then(console.log)"
-docker compose exec db psql -U vicalba -d vicalba
+docker compose exec db psql -U vicagr -d vicagr
 ```
 
 ```sql
@@ -192,10 +192,10 @@ En **Configuración → Backups**:
    del Panel, o **Local (en la VPS)** si aún no tienes un destino externo. Pulsa **Probar y
    guardar**.
 
-   El destino local guarda el repositorio en `/var/vicalba/backups/restic` (carpeta fija, la crea
+   El destino local guarda el repositorio en `/var/vicagr/backups/restic` (carpeta fija, la crea
    y da permisos el § A4; el `docker-compose.yml` la monta en el Panel). Si la VPS o su disco se
    pierden, las copias se pierden con ella: monta ahí un volumen o disco aparte del proveedor
-   (`/var/vicalba/backups` como punto de montaje) y pasa a S3/SFTP en cuanto puedas.
+   (`/var/vicagr/backups` como punto de montaje) y pasa a S3/SFTP en cuanto puedas.
 
 2. Guarda el **kit de recuperación** que aparece **y** la `ENCRYPTION_KEY` fuera de la VPS.
    Confirma en el Panel que los has guardado.
@@ -224,8 +224,8 @@ Haz la prueba de § D una vez, para tenerla comprobada antes de necesitarla.
 2. Copia de seguridad de la BD justo antes (además de los backups diarios):
 
    ```bash
-   cd /opt/vicalba-app
-   docker compose exec -T db pg_dump -U vicalba -Fc vicalba > ~/vicalba-$(date +%F).dump
+   cd /opt/vicagr-panel
+   docker compose exec -T db pg_dump -U vicagr -Fc vicagr > ~/vicagr-$(date +%F).dump
    ```
 
 3. Actualiza el código y levanta el **stack completo** (solo reconstruye lo que cambia):
@@ -248,9 +248,9 @@ Las migraciones no se deshacen solas: hay que restaurar la copia de B1.2 con el 
 arrancar después la versión anterior (por ejemplo `v2.2.0`):
 
 ```bash
-cd /opt/vicalba-app
+cd /opt/vicagr-panel
 docker compose stop panel
-docker compose exec -T db pg_restore -U vicalba -d vicalba --clean --if-exists < ~/vicalba-<fecha>.dump
+docker compose exec -T db pg_restore -U vicagr -d vicagr --clean --if-exists < ~/vicagr-<fecha>.dump
 git checkout v2.2.0
 docker compose up -d --build
 ```
@@ -281,7 +281,7 @@ solo § B3.
 
 **Actualizar:** § B1. Las migraciones se aplican solas al arrancar el Panel; no hay variables
 nuevas en el `.env`. Para el destino **Local (en la VPS)** (opcional) crea antes la carpeta
-(`mkdir -p /var/vicalba/backups && chown 1001:1001 /var/vicalba/backups`) y levanta el stack
+(`mkdir -p /var/vicagr/backups && chown 1001:1001 /var/vicagr/backups`) y levanta el stack
 completo con `docker compose up -d` para que el Panel tenga el montaje nuevo (§ B1 ya lo hace).
 
 **Qué esperar:**
@@ -316,8 +316,8 @@ migraciones de las dos versiones se aplican juntas sin problema.
 **Antes de actualizar:**
 
 ```bash
-mkdir -p /var/vicalba/traefik/static
-chown 1001:1001 /var/vicalba/traefik/static
+mkdir -p /var/vicagr/traefik/static
+chown 1001:1001 /var/vicagr/traefik/static
 ```
 
 **Actualizar:** § B1, con el stack completo (`docker compose up -d --build`): cambian la imagen
@@ -336,8 +336,8 @@ de Traefik (fijada a v3.7.15), su `command`, sus volúmenes y el puerto local de
 docker compose ps
 docker compose logs panel | grep -iE "traefik|proxy"   # «Faltaba el traefik.yml estático…»
 curl https://panel.tudominio.com/api/health            # {"status":"ok",...}
-ls /var/vicalba/traefik/static     # traefik.yml
-ls /var/vicalba/traefik/dynamic    # <cliente>_<proyecto>.yml y _proxy.yml; ningún <proyecto>.yml suelto
+ls /var/vicagr/traefik/static     # traefik.yml
+ls /var/vicagr/traefik/dynamic    # <cliente>_<proyecto>.yml y _proxy.yml; ningún <proyecto>.yml suelto
 ```
 
 En el Panel:
@@ -497,7 +497,7 @@ reinicia Traefik.
 Si ni eso funciona, restaura el fichero anterior a mano:
 
 ```bash
-cd /var/vicalba/traefik/static
+cd /var/vicagr/traefik/static
 cp traefik.yml.prev traefik.yml
 docker restart traefik
 ```
@@ -509,15 +509,15 @@ docker restart traefik
 ### El Panel no responde por HTTPS y `docker logs traefik` está vacío o solo muestra el puerto 80
 
 Traefik ha arrancado sin su `traefik.yml` (si falta el fichero, Traefik no da error: arranca con
-su configuración por defecto). Comprueba que existe `/var/vicalba/traefik/static/traefik.yml`:
+su configuración por defecto). Comprueba que existe `/var/vicagr/traefik/static/traefik.yml`:
 
-- No existe → el Panel no ha podido escribirlo: `chown 1001:1001 /var/vicalba/traefik/static` y
+- No existe → el Panel no ha podido escribirlo: `chown 1001:1001 /var/vicagr/traefik/static` y
   `docker compose restart panel` (lo escribe al arrancar y reinicia Traefik).
 - Existe → `docker restart traefik`.
 
 ### En el log del Panel: `EACCES … /etc/traefik/static/traefik.yml`
 
-El directorio es de `root`: `chown 1001:1001 /var/vicalba/traefik/static` y
+El directorio es de `root`: `chown 1001:1001 /var/vicagr/traefik/static` y
 `docker compose restart panel`.
 
 ### El Panel no arranca: `Bind for … :3000 failed: port is already allocated`
@@ -525,7 +525,7 @@ El directorio es de `root`: `chown 1001:1001 /var/vicalba/traefik/static` y
 Otro contenedor publica el puerto 3000 de la VPS (`docker ps | grep 3000`). Los Proyectos no
 necesitan publicarlo, porque Traefik les llega por la red de Docker: lo más limpio es quitar ese
 `ports` del Proyecto. Si no se puede ahora, mueve el acceso de emergencia del Panel con un
-`docker-compose.override.yml` en `/opt/vicalba-app`, y usa ese puerto en el túnel de § D:
+`docker-compose.override.yml` en `/opt/vicagr-panel`, y usa ese puerto en el túnel de § D:
 
 ```yaml
 services:
@@ -560,10 +560,10 @@ El Servicio al que apunta la ruta no está en marcha o no tiene su alias de red:
 muestra en «Requiere atención». Arranca el Servicio o redespliega el Proyecto (una ruta a un
 Servicio que no tenía ninguna funciona tras el siguiente deploy).
 
-### Error de permisos al hacer deploy (`EACCES /var/vicalba/repos`)
+### Error de permisos al hacer deploy (`EACCES /var/vicagr/repos`)
 
 ```bash
-chown -R 1001:1001 /var/vicalba/repos
+chown -R 1001:1001 /var/vicagr/repos
 ```
 
 ### Error de permisos con el socket Docker (`permission denied /var/run/docker.sock`)
@@ -578,7 +578,7 @@ docker compose up -d panel
 Comprueba que está en `.env` con este formato:
 
 ```env
-DATABASE_URL=postgresql://vicalba:<DB_PASSWORD>@db:5432/vicalba
+DATABASE_URL=postgresql://vicagr:<DB_PASSWORD>@db:5432/vicagr
 ```
 
 ---
@@ -714,7 +714,7 @@ Actualiza cada Panel a la **2.5.0** siguiendo § B2a.
 
 ### F7. Conectar cada Panel
 
-1. En el `.env` de la VPS (`/opt/vicalba-app/.env`), sin barra final en la URL:
+1. En el `.env` de la VPS (`/opt/vicagr-panel/.env`), sin barra final en la URL:
 
    ```env
    OIDC_ISSUER=https://id.tudominio.com

@@ -2,7 +2,7 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 
-const CLAVE = "vicalba:fijados";
+const CLAVE = "vicagr:fijados";
 const SIN_FIJADOS: string[] = [];
 
 // Per-browser convenience: pins live in localStorage, with an in-memory

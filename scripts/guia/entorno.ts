@@ -4,12 +4,12 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import path from "node:path";
 
-export const PROYECTO = "vicalba-guia";
-export const RED_DEMO = "vicalba-guia-demo";
+export const PROYECTO = "vicagr-guia";
+export const RED_DEMO = "vicagr-guia-demo";
 export const TMP = path.join(process.cwd(), "scripts", "guia", ".tmp");
 const ENV = path.join(TMP, ".env");
-const CONTENEDORES_FIJOS = ["traefik", "vicalba-db", "vicalba-panel"];
-const SFTP = "vicalba-guia-sftp";
+const CONTENEDORES_FIJOS = ["traefik", "vicagr-db", "vicagr-panel"];
+const SFTP = "vicagr-guia-sftp";
 
 export type EntornoGuia = Record<string, string>;
 
@@ -98,7 +98,7 @@ export function generarEnv(): EntornoGuia {
   ]);
   const entorno: EntornoGuia = {
     DB_PASSWORD: dbPassword,
-    DATABASE_URL: `postgresql://vicalba:${dbPassword}@db:5432/vicalba`,
+    DATABASE_URL: `postgresql://vicagr:${dbPassword}@db:5432/vicagr`,
     NEXTAUTH_SECRET: randomBytes(32).toString("hex"),
     NEXTAUTH_URL: "https://localhost",
     PANEL_DOMAIN: "localhost",
@@ -121,21 +121,21 @@ export async function esperarPanelSano(timeoutMs = 300_000): Promise<void> {
   const limite = Date.now() + timeoutMs;
   while (Date.now() < limite) {
     const estado = docker(
-      ["inspect", "-f", "{{.State.Health.Status}}", "vicalba-panel"],
+      ["inspect", "-f", "{{.State.Health.Status}}", "vicagr-panel"],
       { permitirFallo: true },
     );
     if (estado === "healthy") return;
     await new Promise((r) => setTimeout(r, 2000));
   }
   throw new Error(
-    "El Panel no llegó a estar sano en 5 minutos (docker logs vicalba-panel).",
+    "El Panel no llegó a estar sano en 5 minutos (docker logs vicagr-panel).",
   );
 }
 
 // The Panel writes Traefik's static file at startup; on the first start the
 // volume was still root-owned, so it starts again once it can write there.
 export async function reiniciarPanel(): Promise<void> {
-  docker(["restart", "vicalba-panel"]);
+  docker(["restart", "vicagr-panel"]);
   await esperarPanelSano();
 }
 
@@ -145,11 +145,11 @@ export function prepararVolumenes(): void {
     "exec",
     "-u",
     "0",
-    "vicalba-panel",
+    "vicagr-panel",
     "chown",
     "-R",
     "1001:1001",
-    "/var/vicalba/repos",
+    "/var/vicagr/repos",
     "/etc/traefik/dynamic",
     "/etc/traefik/static",
   ]);
@@ -166,7 +166,7 @@ export function generarClaveSsh(): { publica: string; privada: string } {
     "-N",
     "",
     "-C",
-    "vicalba-guia",
+    "vicagr-guia",
     "-f",
     fichero,
   ]);
@@ -185,7 +185,7 @@ export async function arrancarSftp(clavePublica: string): Promise<void> {
     "--network",
     RED_DEMO,
     "--label",
-    "vicalba.guia=1",
+    "vicagr.guia=1",
     "-e",
     `PUBLIC_KEY=${clavePublica}`,
     "-e",
@@ -219,9 +219,9 @@ export function arrancarContenedoresDemo(): void {
     "run",
     "-d",
     "--name",
-    "vicalba-guia-tienda",
+    "vicagr-guia-tienda",
     "--label",
-    "vicalba.guia=1",
+    "vicagr.guia=1",
     "--label",
     "com.docker.compose.project=tienda-mari-tienda",
     "--label",
@@ -235,7 +235,7 @@ export function arrancarContenedoresDemo(): void {
 
 export function limpiar(): void {
   // Demo containers first: the SFTP one keeps the demo network busy.
-  const demo = docker(["ps", "-aq", "--filter", "label=vicalba.guia=1"], {
+  const demo = docker(["ps", "-aq", "--filter", "label=vicagr.guia=1"], {
     permitirFallo: true,
   });
   if (demo) docker(["rm", "-f", ...demo.split("\n")], { permitirFallo: true });

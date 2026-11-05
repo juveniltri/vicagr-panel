@@ -186,7 +186,7 @@ export function DestinoBackupForm({
             max: 65535,
           })}
           {campoSftp("usuario", "Usuario")}
-          {campoSftp("ruta", "Ruta", { placeholder: "/srv/vicalba" })}
+          {campoSftp("ruta", "Ruta", { placeholder: "/srv/vicagr" })}
           <div className="flex flex-col gap-1">
             <span className="font-body text-xs text-text-muted">
               Credencial SSH

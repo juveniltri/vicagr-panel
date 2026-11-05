@@ -6,7 +6,7 @@ y la **`ENCRYPTION_KEY`** del `.env` original.
 ## 1. Preparar la VPS
 
 Sigue `production.md` § A1–A7 **sin** arrancar el stack (sin el § A8): Docker, firewall,
-`mkdir` y `chown -R 1001:1001 /var/vicalba` (sin él el Panel no puede escribir en esas carpetas,
+`mkdir` y `chown -R 1001:1001 /var/vicagr` (sin él el Panel no puede escribir en esas carpetas,
 `traefik/static` incluida), `git clone`, DNS y `cp .env.production.example .env`, rellenándolo con
 **la misma `ENCRYPTION_KEY`**.
 
@@ -19,7 +19,7 @@ export RESTIC_PASSWORD='<clave del kit>'
 # S3:
 export AWS_ACCESS_KEY_ID='...' AWS_SECRET_ACCESS_KEY='...'
 # Local (en la VPS): sin credenciales. Saca antes la carpeta de la VPS, p. ej.
-#   rsync -a /var/vicalba/backups/restic/ otro-servidor:/ruta/restic/
+#   rsync -a /var/vicagr/backups/restic/ otro-servidor:/ruta/restic/
 #   y usa esa copia: RESTIC_REPOSITORY=/ruta/restic (o `restic -r /ruta/restic snapshots`).
 # SFTP: la clave SSH del destino en ~/.ssh y, si el puerto no es 22,
 #   restic -o sftp.command="ssh -p 2222 usuario@host -s sftp" ...
@@ -34,14 +34,14 @@ find /tmp/recuperacion -name panel-db.dump
 docker compose up -d db
 DUMP=$(find /tmp/recuperacion -name panel-db.dump)
 docker compose cp "$DUMP" db:/tmp/panel-db.dump
-docker compose exec db pg_restore --clean --if-exists --no-owner -U vicalba -d vicalba /tmp/panel-db.dump
+docker compose exec db pg_restore --clean --if-exists --no-owner -U vicagr -d vicagr /tmp/panel-db.dump
 ```
 
 ## 4. Restaurar Traefik
 
 ```bash
 DIR=$(dirname "$DUMP")/traefik
-cp -r "$DIR/dynamic/." /var/vicalba/traefik/dynamic/
+cp -r "$DIR/dynamic/." /var/vicagr/traefik/dynamic/
 docker compose up -d traefik
 docker compose cp "$DIR/acme.json" traefik:/letsencrypt/acme.json
 docker compose exec traefik chmod 600 /letsencrypt/acme.json
@@ -95,7 +95,7 @@ orden de la restauración a mano es el mismo que sigue el Panel:
 
 Todos los snapshots de Proyectos llevan las etiquetas `proyecto`, `p:<id>`, `e:<hash>`,
 `c:<id de la copia>` y `o:<origen>` (`programado`, `manual` o `antes_de_restaurar`), con host
-`vicalba-panel`. El `<id>` es el id del Proyecto en la BD del Panel: es el que sale en su URL,
+`vicagr-panel`. El `<id>` es el id del Proyecto en la BD del Panel: es el que sale en su URL,
 `/proyectos/<id>`. Sin el Panel, `restic snapshots --tag proyecto` lista todo (columna Tags) y los
 nombres de servicio y carpeta de la columna Paths (`/bd/<servicio>/…`, `/datos/…`) permiten
 reconocer cuál es cuál. Lo más cómodo es **apuntar de antemano** el id de cada Proyecto junto al
@@ -175,7 +175,7 @@ contenedor desde su entorno.
 Se vuelcan en un contenedor auxiliar (`busybox:1.37.0`) que monta el origen y lo vacía antes de
 extraer. El origen es el nombre del volumen de Docker (`docker volume ls`; los de Compose se
 llaman `<cliente>-<proyecto>_<volumen>`) o la ruta del bind en la VPS
-(`/var/vicalba/repos/<cliente>/<proyecto>/<ruta>`).
+(`/var/vicagr/repos/<cliente>/<proyecto>/<ruta>`).
 
 ```bash
 restic dump <snapshot> '/datos/<clave codificada>.tar' \
@@ -192,7 +192,7 @@ parados (paso 1 del orden de arriba).
 Los Proyectos de un Cliente con el compose editado en el Panel comparten `.panel/`, así que su
 `./data` es la misma carpeta (clave `datos:.panel/data`) y **el Panel no la restaura**: vaciarla
 dejaría sin datos a otros Proyectos que están escribiendo en ella. Se recupera con el comando
-anterior, con origen `/var/vicalba/repos/<cliente>/.panel/data`, parando antes los contenedores de todos los Proyectos
+anterior, con origen `/var/vicagr/repos/<cliente>/.panel/data`, parando antes los contenedores de todos los Proyectos
 del Cliente que la monten. Cualquiera de ellos sirve como fuente; la copia es la misma.
 
 ### Si una restauración desde el Panel falla
@@ -206,8 +206,8 @@ parados** (los datos pueden estar a medias) y avisa. Tienes dos salidas:
 - Terminarla a mano con los comandos de arriba y arrancar el Proyecto (**Iniciar** en el Panel o
   `docker start` de sus contenedores).
 
-Si el Panel se cae a mitad, al arrancar quita los contenedores auxiliares `vicalba-backup-*` que
-queden; a mano: `docker ps -a --filter name=^vicalba-backup- -q | xargs -r docker rm -f`.
+Si el Panel se cae a mitad, al arrancar quita los contenedores auxiliares `vicagr-backup-*` que
+queden; a mano: `docker ps -a --filter name=^vicagr-backup- -q | xargs -r docker rm -f`.
 
 ### Lo olvidado no vuelve
 

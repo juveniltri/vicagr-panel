@@ -15,7 +15,7 @@ async function main() {
 
   const passwordHash = await bcrypt.hash("dev-password-2026", 12);
   await prisma.user.create({
-    data: { email: "admin@vicalba.local", passwordHash, nombre: "Admin" },
+    data: { email: "admin@vicagr.local", passwordHash, nombre: "Admin" },
   });
 
   const clienteUno = await prisma.cliente.create({

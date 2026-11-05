@@ -7,7 +7,7 @@ import { comprobarRuta } from "./rutaSegura";
 // Junctions need no privileges on Windows and lstat reports them as links;
 // if even that fails, the link cases are skipped.
 async function puedeEnlazar(): Promise<boolean> {
-  const dir = await mkdtemp(path.join(tmpdir(), "vicalba-enlace-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "vicagr-enlace-"));
   try {
     await mkdir(path.join(dir, "a"));
     await symlink(path.join(dir, "a"), path.join(dir, "b"), "junction");
@@ -24,7 +24,7 @@ describe("comprobarRuta", () => {
   let raiz: string;
 
   beforeAll(async () => {
-    raiz = await mkdtemp(path.join(tmpdir(), "vicalba-raiz-"));
+    raiz = await mkdtemp(path.join(tmpdir(), "vicagr-raiz-"));
     await mkdir(path.join(raiz, "r", "c", "crm", "data", "media"), {
       recursive: true,
     });

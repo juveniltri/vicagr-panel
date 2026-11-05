@@ -16,7 +16,10 @@ import {
 
 const log = logger.child({ module: "traefik" });
 
-const CABECERA_GENERADO = "# generado por vicalba-panel";
+const CABECERA_GENERADO = "# generado por vicagr-panel";
+// HACK: ficheros escritos antes del cambio de nombre; quitar en la release siguiente
+// a la que despliegue el rename (regenerarConfigTraefik ya los reescribe al arrancar).
+const CABECERAS_GENERADO = [CABECERA_GENERADO, "# generado por vicalba-panel"];
 
 export type RutaTraefik = {
   id: string;
@@ -352,7 +355,8 @@ async function leerGenerados(nombres: string[]): Promise<string[]> {
   for (const nombre of nombres) {
     if (!nombre.endsWith(".yml")) continue;
     const contenido = await readFile(ruta(nombre), "utf-8");
-    if (contenido.startsWith(`${CABECERA_GENERADO} `)) generados.push(nombre);
+    if (CABECERAS_GENERADO.some((c) => contenido.startsWith(`${c} `)))
+      generados.push(nombre);
   }
   return generados;
 }

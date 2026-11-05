@@ -3,7 +3,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useFijados } from "./useFijados";
 
-const CLAVE = "vicalba:fijados";
+const CLAVE = "vicagr:fijados";
 
 afterEach(() => {
   localStorage.clear();

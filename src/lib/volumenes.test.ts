@@ -2,13 +2,13 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolverRutaSegura, rutaHostVolumen } from "./volumenes";
 
-const base = "/var/vicalba/repos/acme/web/volumes/uploads";
+const base = "/var/vicagr/repos/acme/web/volumes/uploads";
 
 describe("rutaHostVolumen", () => {
   it("construye la ruta del volumen dentro del directorio de repos", () => {
-    expect(
-      rutaHostVolumen("/var/vicalba/repos", "acme", "web", "uploads"),
-    ).toBe(base);
+    expect(rutaHostVolumen("/var/vicagr/repos", "acme", "web", "uploads")).toBe(
+      base,
+    );
   });
 });
 

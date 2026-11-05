@@ -123,7 +123,7 @@ describe("Sidebar", () => {
   });
 
   it("lista los proyectos fijados con enlace a su página", () => {
-    localStorage.setItem("vicalba:fijados", JSON.stringify(["p2"]));
+    localStorage.setItem("vicagr:fijados", JSON.stringify(["p2"]));
     render(<Sidebar proyectos={proyectos} usuario={usuario} />);
 
     const fijados = screen.getByRole("list", { name: "Fijados" });
@@ -141,7 +141,7 @@ describe("Sidebar", () => {
   });
 
   it("ignora fijados de proyectos que ya no existen", () => {
-    localStorage.setItem("vicalba:fijados", JSON.stringify(["borrado"]));
+    localStorage.setItem("vicagr:fijados", JSON.stringify(["borrado"]));
     render(<Sidebar proyectos={proyectos} usuario={usuario} />);
     expect(
       screen.getByText(/fija proyectos desde su página/i),

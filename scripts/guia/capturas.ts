@@ -31,9 +31,7 @@ async function abrir(page: Page, ruta: string): Promise<void> {
 
 export async function entrar(page: Page): Promise<void> {
   mkdirSync(DESTINO, { recursive: true });
-  await page.addInitScript(() =>
-    localStorage.setItem("vicalba-theme", "light"),
-  );
+  await page.addInitScript(() => localStorage.setItem("vicagr-theme", "light"));
   await abrir(page, "/login");
   await page.screenshot({ path: path.join(DESTINO, "login.png") });
   await page.getByLabel("Email").fill(USUARIO_DEMO.email);
@@ -190,7 +188,7 @@ const PASOS: Paso[] = [
     ruta: () => "/configuracion?seccion=backups",
     preparar: async (page) => {
       await page.getByRole("button", { name: "SFTP" }).click();
-      await page.getByLabel("Host").fill("vicalba-guia-sftp");
+      await page.getByLabel("Host").fill("vicagr-guia-sftp");
       await page.getByLabel("Puerto").fill("2222");
       await page.getByLabel("Usuario").fill("copias");
       await page.getByLabel("Ruta").fill("/config/copias");

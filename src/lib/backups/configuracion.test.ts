@@ -11,8 +11,8 @@ const { mockFindUnique, mockEjecutarFs } = vi.hoisted(() => ({
 }));
 vi.mock("@/env", () => ({
   env: {
-    REPOS_DIR: "/var/vicalba/repos",
-    BACKUPS_LOCAL_DIR: "/var/vicalba/backups",
+    REPOS_DIR: "/var/vicagr/repos",
+    BACKUPS_LOCAL_DIR: "/var/vicagr/backups",
     ENCRYPTION_KEY: "0".repeat(64),
   },
 }));
@@ -41,7 +41,7 @@ const base = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockEjecutarFs.mkdtemp.mockResolvedValue("/tmp/vicalba-ssh-1");
+  mockEjecutarFs.mkdtemp.mockResolvedValue("/tmp/vicagr-ssh-1");
 });
 
 describe("cargarConfigResuelta", () => {
@@ -49,7 +49,7 @@ describe("cargarConfigResuelta", () => {
     mockFindUnique.mockResolvedValue({ ...base, tipoDestino: "local" });
     expect(await cargarConfigResuelta()).toEqual({
       clave: "claro(k)",
-      destino: { tipo: "local", ruta: "/var/vicalba/backups" },
+      destino: { tipo: "local", ruta: "/var/vicagr/backups" },
     });
   });
 
@@ -144,11 +144,11 @@ describe("conRestic", () => {
       }),
     ).rejects.toThrow("fallo");
     expect(mockEjecutarFs.writeFile).toHaveBeenCalledWith(
-      "/tmp/vicalba-ssh-1/clave",
+      "/tmp/vicagr-ssh-1/clave",
       "KEY\n",
       { mode: 0o600 },
     );
-    expect(mockEjecutarFs.rm).toHaveBeenCalledWith("/tmp/vicalba-ssh-1", {
+    expect(mockEjecutarFs.rm).toHaveBeenCalledWith("/tmp/vicagr-ssh-1", {
       recursive: true,
       force: true,
     });

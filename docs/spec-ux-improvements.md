@@ -139,7 +139,7 @@ Cero colores hardcodeados en componentes.
 
 - `<html data-theme="dark">` por defecto
 - Toggle en esquina inferior del sidebar: botón sol/luna (SVG inline, sin lib)
-- Persistir preferencia en `localStorage` con key `vicalba-theme`
+- Persistir preferencia en `localStorage` con key `vicagr-theme`
 - CSS: variables en `:root[data-theme="dark"]` y `:root[data-theme="light"]`
 - Respetar `prefers-color-scheme` solo en la carga inicial si no hay valor
   guardado en localStorage

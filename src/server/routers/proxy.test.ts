@@ -37,7 +37,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockContarSoloCf.mockResolvedValue(0);
   vi.mocked(auth).mockResolvedValue({
-    user: { id: "u1", email: "admin@vicalba.local" },
+    user: { id: "u1", email: "admin@vicagr.local" },
     expires: "2099-01-01",
   } as never);
 });

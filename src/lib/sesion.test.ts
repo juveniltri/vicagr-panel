@@ -102,7 +102,7 @@ describe("tokenOidc", () => {
   it("sustituye la identidad de Pocket ID por la del usuario local", async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
       id: "u1",
-      email: "local@vicalba.local",
+      email: "local@vicagr.local",
       nombre: "Local",
     } as never);
 
@@ -113,7 +113,7 @@ describe("tokenOidc", () => {
 
     expect(token).toMatchObject({
       sub: "u1",
-      email: "local@vicalba.local",
+      email: "local@vicagr.local",
       name: "Local",
       oidc: true,
       extra: 1,

@@ -355,14 +355,14 @@ describe("copiarProyecto", () => {
       }),
     );
     await new Promise((r) => setTimeout(r, 0));
-    control.abort("Cancelado por ana@vicalba.es");
+    control.abort("Cancelado por ana@vicagr.es");
     const r = await promesa;
 
     expect(r).toEqual([
       {
         clave: "datos:./data/media",
         ok: false,
-        error: "Cancelado por ana@vicalba.es",
+        error: "Cancelado por ana@vicagr.es",
       },
     ]);
     expect(m.eliminarAuxiliar).toHaveBeenCalledWith(

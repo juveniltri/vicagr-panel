@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSyncExternalStore } from "react";
 import { IconX } from "@/components/ui/icons";
 
-const CLAVE = "vicalba:novedades-vistas";
+const CLAVE = "vicagr:novedades-vistas";
 
 // Per-browser convenience, like the pinned projects: storage can be blocked
 // (private mode), so there is an in-memory fallback.

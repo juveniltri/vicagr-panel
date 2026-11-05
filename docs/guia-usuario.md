@@ -222,7 +222,7 @@ de Traefik fuera de la VPS.
    - **SFTP**: un servidor tuyo. Rellena host, puerto, usuario, ruta absoluta y la credencial
      SSH (créala antes en Credenciales SSH y añade su clave pública al servidor).
    - **Local (en la VPS)**: sin campos; guarda las copias en la carpeta fija
-     `/var/vicalba/backups` de la propia VPS (el administrador la crea al instalar). Es un
+     `/var/vicagr/backups` de la propia VPS (el administrador la crea al instalar). Es un
      sustituto mientras no haya un destino externo: si se pierde la VPS o su disco, se pierden
      también las copias. El Panel lo recuerda con un aviso ámbar y muestra el espacio libre.
 2. Pulsa **Probar y guardar**. El Panel comprueba que llega al destino, genera la clave de

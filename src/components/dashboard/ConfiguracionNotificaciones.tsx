@@ -265,7 +265,7 @@ export function ConfiguracionNotificaciones({
                 value: remitente,
                 setter: setRemitente,
                 type: "email",
-                placeholder: "panel@vicalba.com",
+                placeholder: "panel@example.com",
               },
               {
                 id: "email-destinatario",

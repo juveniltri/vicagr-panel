@@ -16,7 +16,7 @@ const smtpConfig = {
   smtpPort: 587,
   smtpUser: "user@ejemplo.com",
   smtpPass: "supersecret",
-  remitente: "panel@vicalba.com",
+  remitente: "panel@example.com",
   destinatario: "admin@cliente.com",
 };
 

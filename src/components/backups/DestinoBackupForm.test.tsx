@@ -33,7 +33,7 @@ const vacia: ConfiguracionBackupVista = {
     ruta: null,
     credencialId: null,
   },
-  local: { ruta: "/var/vicalba/backups", espacioLibreBytes: null },
+  local: { ruta: "/var/vicagr/backups", espacioLibreBytes: null },
   tieneClave: false,
   claveConfirmada: false,
   repositorioInicializado: false,
@@ -68,7 +68,7 @@ describe("DestinoBackupForm", () => {
         endpoint: "https://s3.ejemplo.com",
         bucket: "mi-bucket",
         region: "eu",
-        prefijo: "vicalba",
+        prefijo: "vicagr",
         accessKeyId: "AK",
         tieneSecretKey: true,
       },
@@ -87,7 +87,7 @@ describe("DestinoBackupForm", () => {
       endpoint: "https://s3.ejemplo.com",
       bucket: "mi-bucket",
       region: "eu",
-      prefijo: "vicalba",
+      prefijo: "vicagr",
       accessKeyId: "AK",
       secretKey: "",
     });
@@ -132,7 +132,7 @@ describe("DestinoBackupForm", () => {
     await user.clear(puerto);
     await user.type(puerto, "2222");
     await user.type(screen.getByLabelText("Usuario"), "copias");
-    await user.type(screen.getByLabelText("Ruta"), "/srv/vicalba");
+    await user.type(screen.getByLabelText("Ruta"), "/srv/vicagr");
     await user.click(screen.getByRole("button", { name: /credencial ssh/i }));
     await user.click(
       screen.getByRole("option", { name: "Servidor de copias" }),
@@ -143,7 +143,7 @@ describe("DestinoBackupForm", () => {
       host: "backup.ejemplo.com",
       puerto: 2222,
       usuario: "copias",
-      ruta: "/srv/vicalba",
+      ruta: "/srv/vicagr",
       credencialId: "c1",
     });
   });
@@ -173,7 +173,7 @@ describe("DestinoBackupForm", () => {
     expect(screen.queryByLabelText("Bucket")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Host")).not.toBeInTheDocument();
     const ruta = screen.getByLabelText("Carpeta");
-    expect(ruta).toHaveValue("/var/vicalba/backups");
+    expect(ruta).toHaveValue("/var/vicagr/backups");
     expect(ruta).toHaveAttribute("readonly");
     const aviso = screen.getByRole("note");
     expect(aviso).toHaveTextContent(
@@ -188,7 +188,7 @@ describe("DestinoBackupForm", () => {
     renderizar({
       ...vacia,
       tipoDestino: "local",
-      local: { ruta: "/var/vicalba/backups", espacioLibreBytes: 5 * 1024 ** 3 },
+      local: { ruta: "/var/vicagr/backups", espacioLibreBytes: 5 * 1024 ** 3 },
       tieneClave: true,
     });
     expect(screen.getByText(/Espacio libre: 5 GB/)).toBeInTheDocument();
