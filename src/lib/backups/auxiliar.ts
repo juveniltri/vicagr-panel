@@ -3,7 +3,7 @@ import { ejecutar, ErrorProceso } from "./procesos";
 
 export { IMAGEN_AUXILIAR };
 
-const PREFIJO = "vicalba-backup-";
+const PREFIJO = "vicagr-backup-";
 
 export function nombreAuxiliar(backupId: string, clave: string): string {
   return `${PREFIJO}${backupId}-${hashClave(clave)}`;

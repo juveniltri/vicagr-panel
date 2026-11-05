@@ -4,7 +4,7 @@ import { useCallback, useSyncExternalStore } from "react";
 
 type Theme = "dark" | "light";
 
-const STORAGE_KEY = "vicalba-theme";
+const STORAGE_KEY = "vicagr-theme";
 const oyentes = new Set<() => void>();
 
 function readThemeFromDOM(): Theme {

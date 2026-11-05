@@ -5,7 +5,7 @@ vi.mock("./procesos", () => ({ ejecutar: mockEjecutar }));
 
 import { entornoPg, pgDump, pgRestore } from "./postgres";
 
-const URL_BD = "postgresql://vicalba:p%40ss@db:5432/vicalba?schema=public";
+const URL_BD = "postgresql://vicagr:p%40ss@db:5432/vicagr?schema=public";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -17,9 +17,9 @@ describe("entornoPg", () => {
     expect(entornoPg(URL_BD)).toEqual({
       PGHOST: "db",
       PGPORT: "5432",
-      PGUSER: "vicalba",
+      PGUSER: "vicagr",
       PGPASSWORD: "p@ss",
-      PGDATABASE: "vicalba",
+      PGDATABASE: "vicagr",
     });
   });
 
@@ -52,7 +52,7 @@ describe("pgDump y pgRestore", () => {
       "--single-transaction",
       "--no-owner",
       "--dbname",
-      "vicalba",
+      "vicagr",
       "/tmp/r/panel-db.dump",
     ]);
   });

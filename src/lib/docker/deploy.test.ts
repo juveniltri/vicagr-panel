@@ -75,7 +75,7 @@ vi.mock("node:fs/promises", () => ({
 }));
 vi.mock("@/env", () => ({
   env: {
-    REPOS_DIR: "/var/vicalba/repos",
+    REPOS_DIR: "/var/vicagr/repos",
     DOCKER_SOCKET_PATH: "/var/run/docker.sock",
     NODE_ENV: "test",
   },
@@ -350,7 +350,7 @@ describe("deployProyecto con variables de entorno", () => {
     });
 
     expect(mockWriteFile).toHaveBeenCalledWith(
-      "/var/vicalba/repos/acme/web-app/.env",
+      "/var/vicagr/repos/acme/web-app/.env",
       "DATABASE_URL=postgres://localhost/db\nJWT_SECRET=supersecret",
       { encoding: "utf-8", mode: 0o600 },
     );
@@ -365,7 +365,7 @@ describe("deployProyecto con variables de entorno", () => {
       variables: [{ clave: "X", valor: "y" }],
     });
     expect(mockUnlink).not.toHaveBeenCalledWith(
-      "/var/vicalba/repos/acme/web-app/.env",
+      "/var/vicagr/repos/acme/web-app/.env",
     );
   });
 
@@ -379,7 +379,7 @@ describe("deployProyecto con variables de entorno", () => {
       }),
     ).rejects.toThrow();
     expect(mockUnlink).not.toHaveBeenCalledWith(
-      "/var/vicalba/repos/acme/web-app/.env",
+      "/var/vicagr/repos/acme/web-app/.env",
     );
   });
 
@@ -393,7 +393,7 @@ describe("deployProyecto con variables de entorno", () => {
     });
 
     expect(mockWriteFile).toHaveBeenCalledWith(
-      "/var/vicalba/repos/acme/web-app/.env",
+      "/var/vicagr/repos/acme/web-app/.env",
       'PASSWORD=p@ss#word"with"quotes\nPATH_VAR=C:\\Users\\name',
       { encoding: "utf-8", mode: 0o600 },
     );
@@ -530,7 +530,7 @@ describe("deployProyecto con credencial SSH", () => {
     );
   });
 
-  const keyFilePath = "/var/vicalba/repos/acme/.panel/web-app.deploy_key";
+  const keyFilePath = "/var/vicagr/repos/acme/.panel/web-app.deploy_key";
 
   it("escribe la clave privada en .deploy_key con permisos 0o600", async () => {
     await deployProyecto({
@@ -599,7 +599,7 @@ describe("deployProyecto — composeContent (compose editor)", () => {
     await deployProyecto({ ...baseParams, composeContent: composeYaml });
 
     expect(mockWriteFile).toHaveBeenCalledWith(
-      "/var/vicalba/repos/acme/.panel/web-app.docker-compose.yml",
+      "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
       composeYaml,
       { encoding: "utf-8" },
     );
@@ -611,7 +611,7 @@ describe("deployProyecto — composeContent (compose editor)", () => {
     const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
     const fIdx = spawnArgs.indexOf("-f");
     expect(spawnArgs[fIdx + 1]).toBe(
-      "/var/vicalba/repos/acme/.panel/web-app.docker-compose.yml",
+      "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
     );
   });
 
@@ -619,14 +619,14 @@ describe("deployProyecto — composeContent (compose editor)", () => {
     mockReadFile.mockResolvedValueOnce(composeYaml);
     await deployProyecto({ ...baseParams, composeContent: composeYaml });
 
-    const override = "/var/vicalba/repos/acme/.panel/web-app.logging.yml";
+    const override = "/var/vicagr/repos/acme/.panel/web-app.logging.yml";
     const escrito = mockWriteFile.mock.calls.find((c) => c[0] === override);
     expect(escrito?.[1]).not.toContain("&");
     expect(escrito?.[1]).toMatch(/web:\n {4}logging:[\s\S]*api:\n {4}logging:/);
     expect(escrito?.[1]).toContain("max-size: 10m");
     const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
     expect(spawnArgs.join(" ")).toContain(
-      `-f /var/vicalba/repos/acme/.panel/web-app.docker-compose.yml -f ${override}`,
+      `-f /var/vicagr/repos/acme/.panel/web-app.docker-compose.yml -f ${override}`,
     );
   });
 
@@ -650,7 +650,7 @@ describe("deployProyecto — composeContent (compose editor)", () => {
     });
 
     expect(mockWriteFile).toHaveBeenCalledWith(
-      "/var/vicalba/repos/acme/.panel/web-app.env",
+      "/var/vicagr/repos/acme/.panel/web-app.env",
       "DB_URL=postgres://localhost/db\nSECRET=abc123",
       { encoding: "utf-8", mode: 0o600 },
     );
@@ -659,7 +659,7 @@ describe("deployProyecto — composeContent (compose editor)", () => {
     const envFileIdx = spawnArgs.indexOf("--env-file");
     expect(envFileIdx).toBeGreaterThan(-1);
     expect(spawnArgs[envFileIdx + 1]).toBe(
-      "/var/vicalba/repos/acme/.panel/web-app.env",
+      "/var/vicagr/repos/acme/.panel/web-app.env",
     );
   });
 
@@ -687,13 +687,13 @@ describe("deployProyecto — composeContent (compose editor)", () => {
     const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
     const fIdx = spawnArgs.indexOf("-f");
     expect(spawnArgs[fIdx + 1]).toBe(
-      "/var/vicalba/repos/acme/web-app/docker-compose.yml",
+      "/var/vicagr/repos/acme/web-app/docker-compose.yml",
     );
   });
 });
 
 describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
-  const envRepo = "/var/vicalba/repos/acme/web-app/.env";
+  const envRepo = "/var/vicagr/repos/acme/web-app/.env";
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -791,13 +791,13 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
     });
 
     const [compose] = writesTo(
-      "/var/vicalba/repos/acme/.panel/web-app.docker-compose.yml",
+      "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
     );
     expect(compose?.[1]).toContain(
       [
         "    build:",
-        '      context: "/var/vicalba/repos/acme/web-app"',
-        '      dockerfile: "/var/vicalba/repos/acme/web-app/Dockerfile"',
+        '      context: "/var/vicagr/repos/acme/web-app"',
+        '      dockerfile: "/var/vicagr/repos/acme/web-app/Dockerfile"',
         "      args:",
         '        VITE_SENTRY_DSN: "https://\\"dsn\\""',
         '        GIT_SHA_SHORT: "e881352"',
@@ -816,7 +816,7 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
       });
 
       const [compose] = writesTo(
-        "/var/vicalba/repos/acme/.panel/web-app.docker-compose.yml",
+        "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
       );
       expect(compose?.[1]).toContain(
         [
@@ -841,14 +841,14 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
       });
 
       const [compose] = writesTo(
-        "/var/vicalba/repos/acme/.panel/web-app.docker-compose.yml",
+        "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
       );
       expect(compose?.[1]).toContain('    expose:\n      - "3000"');
       expect(compose?.[1]).not.toContain("ports:");
     },
   );
 
-  const envLocal = "/var/vicalba/repos/acme/web-app/.env.local";
+  const envLocal = "/var/vicagr/repos/acme/web-app/.env.local";
   const nodejs = {
     ...baseParams,
     tipo: "nodejs",
@@ -873,7 +873,7 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
 
     expect(writesTo(envLocal)[0]?.[1]).toBe("GIT_SHA_SHORT=e881352");
     const [dockerfile] = writesTo(
-      "/var/vicalba/repos/acme/.panel/web-app.Dockerfile",
+      "/var/vicagr/repos/acme/.panel/web-app.Dockerfile",
     );
     expect(dockerfile?.[1]).toContain("rm -f .env.local");
     expect(dockerfile?.[1]).toContain("FROM node:22-alpine AS builder");
@@ -884,7 +884,7 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
   });
 
   const ignoreGenerado =
-    "/var/vicalba/repos/acme/.panel/web-app.Dockerfile.dockerignore";
+    "/var/vicagr/repos/acme/.panel/web-app.Dockerfile.dockerignore";
 
   it("nodejs: la imagen no incluye el .git del repositorio", async () => {
     await deployProyecto(nodejs);
@@ -894,7 +894,7 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
 
   it("nodejs: respeta el .dockerignore del repositorio y le añade .git", async () => {
     mockReadFile.mockImplementation(async (ruta: string) => {
-      if (ruta === "/var/vicalba/repos/acme/web-app/.dockerignore")
+      if (ruta === "/var/vicagr/repos/acme/web-app/.dockerignore")
         return "dist\n*.log\n";
       throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
     });

@@ -15,7 +15,7 @@ export default async function GuiaPage() {
   return (
     <div className="flex flex-col gap-6 px-5 md:px-10 pt-7 pb-14 print:p-0">
       <div className="print:hidden">
-        <PageHeader comando="man vicalba" titulo="Guía" />
+        <PageHeader comando="man vicagr" titulo="Guía" />
       </div>
       {markdown ? (
         <GuiaUsuario markdown={markdown} />

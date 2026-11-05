@@ -68,7 +68,7 @@ beforeEach(() => {
   m.create.mockResolvedValue({ id: "b1" });
   m.update.mockResolvedValue({});
   m.cargar.mockResolvedValue({ clave: "c", destino: { tipo: "s3" } });
-  m.fs.mkdtemp.mockResolvedValue("/tmp/vicalba-backup-x");
+  m.fs.mkdtemp.mockResolvedValue("/tmp/vicagr-backup-x");
   m.fs.cp.mockReset().mockResolvedValue(undefined);
   m.pgDump.mockResolvedValue(undefined);
   m.comprobar.mockResolvedValue(undefined);
@@ -89,27 +89,27 @@ describe("iniciarCopia", () => {
     });
     expect(m.pgDump).toHaveBeenCalledWith(
       "postgresql://u:p@db/bd",
-      "/tmp/vicalba-backup-x/panel-db.dump",
+      "/tmp/vicagr-backup-x/panel-db.dump",
       expect.any(AbortSignal),
     );
     expect(m.fs.cp).toHaveBeenCalledWith(
       "/etc/traefik/dynamic",
-      "/tmp/vicalba-backup-x/traefik/dynamic",
+      "/tmp/vicagr-backup-x/traefik/dynamic",
       { recursive: true },
     );
     expect(m.fs.cp).toHaveBeenCalledWith(
       "/etc/traefik/static",
-      "/tmp/vicalba-backup-x/traefik/static",
+      "/tmp/vicagr-backup-x/traefik/static",
       { recursive: true },
     );
     expect(m.fs.writeFile).toHaveBeenCalledWith(
-      "/tmp/vicalba-backup-x/traefik/acme.json",
+      "/tmp/vicagr-backup-x/traefik/acme.json",
       '{"letsencrypt":{}}',
       { mode: 0o600 },
     );
     expect(m.crearSnapshot).toHaveBeenCalledWith(
       expect.anything(),
-      "/tmp/vicalba-backup-x",
+      "/tmp/vicagr-backup-x",
     );
     expect(m.retencion).toHaveBeenCalled();
     // A dead destination must fail in seconds, not after restic's retries.
@@ -125,7 +125,7 @@ describe("iniciarCopia", () => {
         finalizadoEn: expect.any(Date),
       },
     });
-    expect(m.fs.rm).toHaveBeenCalledWith("/tmp/vicalba-backup-x", {
+    expect(m.fs.rm).toHaveBeenCalledWith("/tmp/vicagr-backup-x", {
       recursive: true,
       force: true,
     });
@@ -263,7 +263,7 @@ describe("iniciarCopia", () => {
 describe("hacerCopia", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    m.fs.mkdtemp.mockResolvedValue("/tmp/vicalba-backup-x");
+    m.fs.mkdtemp.mockResolvedValue("/tmp/vicagr-backup-x");
     m.pgDump.mockResolvedValue(undefined);
     m.comprobar.mockResolvedValue(undefined);
     m.update.mockResolvedValue({});

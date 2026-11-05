@@ -1,4 +1,4 @@
-# vicalba-app
+# vicagr-panel
 
 Panel de control de infraestructura al estilo Coolify, diseñado para uso interno. Gestiona todos los proyectos Docker en una única VPS: proxy inverso Traefik, SSL automático con Let's Encrypt, deploys desde GitHub vía webhooks y logs en tiempo real.
 
@@ -114,11 +114,11 @@ Resumen:
 ```bash
 # En la VPS (Ubuntu):
 curl -fsSL https://get.docker.com | sh
-mkdir -p /var/vicalba/traefik/dynamic /var/vicalba/traefik/static /var/vicalba/repos
-chown -R 1001:1001 /var/vicalba   # el panel corre como uid 1001
+mkdir -p /var/vicagr/traefik/dynamic /var/vicagr/traefik/static /var/vicagr/repos
+chown -R 1001:1001 /var/vicagr   # el panel corre como uid 1001
 
-git clone git@github.com:juveniltri/vicalba-app.git /opt/vicalba-app
-cd /opt/vicalba-app
+git clone git@github.com:juveniltri/vicagr-panel.git /opt/vicagr-panel
+cd /opt/vicagr-panel
 cp .env.production.example .env   # rellenar valores
 docker compose up -d --build
 ```
@@ -167,8 +167,8 @@ Todos los procedures requieren sesión activa. Accesibles en `/api/trpc`.
 ```text
 VPS
 ├── traefik          ← Puerto 80/443, proxy inverso + SSL
-├── vicalba-db       ← PostgreSQL
-├── vicalba-panel    ← Este panel (puerto 3000, interno)
+├── vicagr-db       ← PostgreSQL
+├── vicagr-panel    ← Este panel (puerto 3000, interno)
 └── [proyectos de clientes]
       ├── cliente-foo-network   ← red bridge aislada
       └── contenedores del proyecto (gestionados por el panel)

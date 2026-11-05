@@ -147,7 +147,7 @@ describe("comandos", () => {
         "--tag",
         "panel",
         "--host",
-        "vicalba-panel",
+        "vicagr-panel",
         ".",
       ],
       {
@@ -301,7 +301,7 @@ describe("snapshots de Proyectos", () => {
       "--json",
       "--quiet",
       "--host",
-      "vicalba-panel",
+      "vicagr-panel",
       "--tag",
       "proyecto",
       "--tag",

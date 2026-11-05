@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/env", () => ({
   env: {
-    REPOS_DIR: "/var/vicalba/repos",
+    REPOS_DIR: "/var/vicagr/repos",
     NODE_ENV: "test",
     DATABASE_URL: "postgresql://test",
     NEXTAUTH_SECRET: "test-secret",
@@ -84,7 +84,7 @@ import { appRouter } from "@/server/routers/_app";
 const createCaller = createCallerFactory(appRouter);
 
 const mockSession = {
-  user: { id: "u1", email: "admin@vicalba.local", name: "Admin" },
+  user: { id: "u1", email: "admin@vicagr.local", name: "Admin" },
   expires: "2099-01-01",
 };
 
@@ -227,7 +227,7 @@ describe("configuracion.guardar — email", () => {
         smtpPort: 587,
         smtpUser: "user@ejemplo.com",
         smtpPass: "mysecretpass",
-        remitente: "panel@vicalba.com",
+        remitente: "panel@example.com",
         destinatario: "admin@cliente.com",
       },
     });

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/env", () => ({
   env: {
-    REPOS_DIR: "/var/vicalba/repos",
+    REPOS_DIR: "/var/vicagr/repos",
     NODE_ENV: "test",
     DATABASE_URL: "postgresql://test",
     NEXTAUTH_SECRET: "test-secret",
@@ -168,7 +168,7 @@ import { appRouter } from "@/server/routers/_app";
 const createCaller = createCallerFactory(appRouter);
 
 const mockSession = {
-  user: { id: "u1", email: "admin@vicalba.local", name: "Admin" },
+  user: { id: "u1", email: "admin@vicagr.local", name: "Admin" },
   expires: "2099-01-01",
 };
 
@@ -1742,7 +1742,7 @@ describe("proyectos.deploy — con variables de entorno", () => {
       expect.objectContaining({
         volumenes: [
           {
-            rutaHost: "/var/vicalba/repos/cliente-uno/web-app/volumes/galeria",
+            rutaHost: "/var/vicagr/repos/cliente-uno/web-app/volumes/galeria",
             rutaContenedor: "/app/public/galeria",
           },
         ],
@@ -1895,7 +1895,7 @@ describe("proyectos.rollback", () => {
         composeContent: "services:\n  web:\n    image: nginx\n",
         volumenes: [
           {
-            rutaHost: "/var/vicalba/repos/cliente-uno/web-app/volumes/galeria",
+            rutaHost: "/var/vicagr/repos/cliente-uno/web-app/volumes/galeria",
             rutaContenedor: "/app/public/galeria",
           },
         ],
@@ -2574,12 +2574,12 @@ describe("proyectos.cargarComposeDesdeRepo", () => {
 
     expect(prepararRepo).toHaveBeenCalledWith(
       "https://github.com/org/web-app",
-      "/var/vicalba/repos/cliente-uno/web-app",
+      "/var/vicagr/repos/cliente-uno/web-app",
       "main",
       expect.any(Object),
     );
     expect(readFile).toHaveBeenCalledWith(
-      "/var/vicalba/repos/cliente-uno/web-app/docker-compose.yml",
+      "/var/vicagr/repos/cliente-uno/web-app/docker-compose.yml",
       "utf-8",
     );
     expect(result.composeContent).toContain("build: ../web-app");
@@ -2638,11 +2638,11 @@ describe("proyectos.cargarComposeDesdeRepo", () => {
 
     expect(prepararRepo).toHaveBeenCalledWith(
       "git@github.com:org/web-app.git",
-      "/var/vicalba/repos/cliente-uno/web-app",
+      "/var/vicagr/repos/cliente-uno/web-app",
       "main",
       expect.objectContaining({
         GIT_SSH_COMMAND: expect.stringContaining(
-          "/var/vicalba/repos/cliente-uno/.panel/web-app.deploy_key",
+          "/var/vicagr/repos/cliente-uno/.panel/web-app.deploy_key",
         ),
       }),
     );
@@ -2951,7 +2951,7 @@ describe("proyectos.deploy — cancelación y timeout", () => {
   it("tras cancelar deja el proyecto en el estado real de sus contenedores y no notifica", async () => {
     vi.mocked(ejecutarDeploy).mockResolvedValue({
       resultado: "cancelado",
-      output: "Cancelado por admin@vicalba.local",
+      output: "Cancelado por admin@vicagr.local",
       porTimeout: false,
     });
     vi.mocked(estadoContenedores).mockResolvedValue("stopped");
@@ -2990,7 +2990,7 @@ describe("proyectos.deploy — cancelación y timeout", () => {
   it("si Docker no responde tras cancelar marca el proyecto como error", async () => {
     vi.mocked(ejecutarDeploy).mockResolvedValue({
       resultado: "cancelado",
-      output: "Cancelado por admin@vicalba.local",
+      output: "Cancelado por admin@vicagr.local",
       porTimeout: false,
     });
     vi.mocked(estadoContenedores).mockRejectedValue(new Error("socket caído"));
@@ -3030,7 +3030,7 @@ describe("proyectos.cancelarDeploy", () => {
     await expect(cancelar()).resolves.toEqual({ ok: true });
     expect(cancelarDeploy).toHaveBeenCalledWith(
       "p1",
-      "Cancelado por admin@vicalba.local",
+      "Cancelado por admin@vicagr.local",
     );
     expect(limpiarDeploysHuerfanos).not.toHaveBeenCalled();
   });
@@ -3040,7 +3040,7 @@ describe("proyectos.cancelarDeploy", () => {
 
     await expect(cancelar()).resolves.toEqual({ ok: true });
     expect(limpiarDeploysHuerfanos).toHaveBeenCalledWith(
-      "Cancelado por admin@vicalba.local",
+      "Cancelado por admin@vicagr.local",
       "p1",
     );
   });

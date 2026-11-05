@@ -44,7 +44,7 @@ const lista: ConfiguracionBackupVista = {
     ruta: null,
     credencialId: null,
   },
-  local: { ruta: "/var/vicalba/backups", espacioLibreBytes: null },
+  local: { ruta: "/var/vicagr/backups", espacioLibreBytes: null },
   tieneClave: true,
   claveConfirmada: true,
   repositorioInicializado: true,

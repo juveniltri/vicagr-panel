@@ -90,7 +90,7 @@ export async function conRestic<T>(
   await mkdir(base, { recursive: true });
   const dirSsh =
     config.destino.tipo === "sftp"
-      ? await mkdtemp(path.join(tmpdir(), "vicalba-ssh-"))
+      ? await mkdtemp(path.join(tmpdir(), "vicagr-ssh-"))
       : null;
   const ficheroClaveSsh = dirSsh ? path.posix.join(dirSsh, "clave") : "";
   try {

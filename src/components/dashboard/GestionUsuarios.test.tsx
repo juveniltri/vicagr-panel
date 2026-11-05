@@ -34,11 +34,11 @@ beforeAll(() => {
 const mockUsuarios = [
   {
     id: "u1",
-    email: "admin@vicalba.local",
+    email: "admin@vicagr.local",
     nombre: "Admin",
     creadoEn: new Date(),
   },
-  { id: "u2", email: "dev@vicalba.local", nombre: "Dev", creadoEn: new Date() },
+  { id: "u2", email: "dev@vicagr.local", nombre: "Dev", creadoEn: new Date() },
 ];
 
 describe("GestionUsuarios — lista", () => {
@@ -47,7 +47,7 @@ describe("GestionUsuarios — lista", () => {
   it("muestra los usuarios en tabla", () => {
     render(<GestionUsuarios usuariosIniciales={mockUsuarios} />);
     expect(screen.getByText("Admin")).toBeInTheDocument();
-    expect(screen.getByText("admin@vicalba.local")).toBeInTheDocument();
+    expect(screen.getByText("admin@vicagr.local")).toBeInTheDocument();
     expect(screen.getByText("Dev")).toBeInTheDocument();
   });
 
@@ -94,7 +94,7 @@ describe("GestionUsuarios — nuevo usuario", () => {
       target: { value: "Nuevo" },
     });
     fireEvent.change(screen.getByLabelText(/email/i), {
-      target: { value: "nuevo@vicalba.local" },
+      target: { value: "nuevo@vicagr.local" },
     });
     fireEvent.change(screen.getByLabelText(/contraseña/i), {
       target: { value: "secret123" },
@@ -102,7 +102,7 @@ describe("GestionUsuarios — nuevo usuario", () => {
     fireEvent.click(screen.getByRole("button", { name: /crear usuario/i }));
     await waitFor(() =>
       expect(crearUsuarioAction).toHaveBeenCalledWith(
-        "nuevo@vicalba.local",
+        "nuevo@vicagr.local",
         "Nuevo",
         "secret123",
       ),
@@ -149,7 +149,7 @@ describe("GestionUsuarios — editar usuario", () => {
     render(<GestionUsuarios usuariosIniciales={[mockUsuarios[0]]} />);
     fireEvent.click(screen.getByRole("button", { name: /editar admin/i }));
     expect(screen.getByDisplayValue("Admin")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("admin@vicalba.local")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("admin@vicagr.local")).toBeInTheDocument();
   });
 
   it("llama a actualizarUsuarioAction al guardar", async () => {
@@ -163,7 +163,7 @@ describe("GestionUsuarios — editar usuario", () => {
       expect(actualizarUsuarioAction).toHaveBeenCalledWith(
         "u1",
         "Admin Pro",
-        "admin@vicalba.local",
+        "admin@vicagr.local",
       ),
     );
   });

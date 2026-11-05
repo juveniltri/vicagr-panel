@@ -73,10 +73,10 @@ async function main(): Promise<void> {
       docker([
         "cp",
         "docs/guia-usuario.md",
-        "vicalba-panel:/app/docs/guia-usuario.md",
+        "vicagr-panel:/app/docs/guia-usuario.md",
       ]);
-      docker(["cp", "public/guia/.", "vicalba-panel:/app/public/guia/"]);
-      docker(["restart", "vicalba-panel"]);
+      docker(["cp", "public/guia/.", "vicagr-panel:/app/public/guia/"]);
+      docker(["restart", "vicagr-panel"]);
       await esperarPanelSano();
       await entrar(page);
       await imprimirPdf(page);

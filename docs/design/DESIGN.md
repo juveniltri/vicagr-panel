@@ -1,4 +1,4 @@
-# Identidad Visual — vicalba-app
+# Identidad Visual — vicagr-panel
 
 ## Dirección: Command Line
 
@@ -8,52 +8,52 @@ Panel de control técnico que fusiona la estética del terminal con una UI moder
 
 ## Paleta de colores
 
-| Token | Hex | Uso |
-|---|---|---|
-| `primary-50`  | `#EFF6FF` | Fondos tintados sutiles, hover states en modo claro |
-| `primary-100` | `#DBEAFE` | Backgrounds suaves en modo claro |
-| `primary-300` | `#93C5FD` | Bordes activos, iconos secundarios |
-| `primary-500` | `#1D4ED8` | Color principal — botones, links, elementos interactivos |
-| `primary-700` | `#1E40AF` | Hover de botones primarios |
-| `primary-900` | `#1E3A8A` | Texto sobre fondo claro, badges en modo claro |
-| `accent`      | `#22D3EE` | CTAs secundarios, badges de estado "running", highlights de logs |
-| `background`  | `#030712` | Fondo base de la app (modo oscuro) |
-| `surface`     | `#0F172A` | Cards, modales, panels, sidebars |
-| `border`      | `#1E293B` | Divisores, bordes de inputs, separadores de tabla |
-| `text-primary`| `#F1F5F9` | Texto principal sobre fondo oscuro |
-| `text-muted`  | `#64748B` | Subtítulos, placeholders, metadatos, timestamps |
+| Token          | Hex       | Uso                                                              |
+| -------------- | --------- | ---------------------------------------------------------------- |
+| `primary-50`   | `#EFF6FF` | Fondos tintados sutiles, hover states en modo claro              |
+| `primary-100`  | `#DBEAFE` | Backgrounds suaves en modo claro                                 |
+| `primary-300`  | `#93C5FD` | Bordes activos, iconos secundarios                               |
+| `primary-500`  | `#1D4ED8` | Color principal — botones, links, elementos interactivos         |
+| `primary-700`  | `#1E40AF` | Hover de botones primarios                                       |
+| `primary-900`  | `#1E3A8A` | Texto sobre fondo claro, badges en modo claro                    |
+| `accent`       | `#22D3EE` | CTAs secundarios, badges de estado "running", highlights de logs |
+| `background`   | `#030712` | Fondo base de la app (modo oscuro)                               |
+| `surface`      | `#0F172A` | Cards, modales, panels, sidebars                                 |
+| `border`       | `#1E293B` | Divisores, bordes de inputs, separadores de tabla                |
+| `text-primary` | `#F1F5F9` | Texto principal sobre fondo oscuro                               |
+| `text-muted`   | `#64748B` | Subtítulos, placeholders, metadatos, timestamps                  |
 
 ### Modo claro (tokens que cambian)
 
-| Token | Hex modo claro |
-|---|---|
-| `background`   | `#F8FAFC` |
-| `surface`      | `#FFFFFF` |
-| `border`       | `#E2E8F0` |
-| `text-primary` | `#0F172A` |
-| `text-muted`   | `#94A3B8` |
+| Token          | Hex modo claro |
+| -------------- | -------------- |
+| `background`   | `#F8FAFC`      |
+| `surface`      | `#FFFFFF`      |
+| `border`       | `#E2E8F0`      |
+| `text-primary` | `#0F172A`      |
+| `text-muted`   | `#94A3B8`      |
 
 ---
 
 ## Tipografía
 
-| Rol | Fuente | Pesos | Uso |
-|---|---|---|---|
-| Display | Space Grotesk | 600, 700 | Títulos, nombres de proyecto, headers de sección |
-| Body | JetBrains Mono | 400, 500, 600 | UI general, labels, descripciones, logs |
+| Rol     | Fuente         | Pesos         | Uso                                              |
+| ------- | -------------- | ------------- | ------------------------------------------------ |
+| Display | Space Grotesk  | 600, 700      | Títulos, nombres de proyecto, headers de sección |
+| Body    | JetBrains Mono | 400, 500, 600 | UI general, labels, descripciones, logs          |
 
 ### Escala
 
-| Nombre | rem | px aprox |
-|---|---|---|
-| `xs` | 0.75rem | 12px |
-| `sm` | 0.875rem | 14px |
-| `base` | 1rem | 16px |
-| `lg` | 1.125rem | 18px |
-| `xl` | 1.25rem | 20px |
-| `2xl` | 1.5rem | 24px |
-| `3xl` | 1.875rem | 30px |
-| `4xl` | 2.25rem | 36px |
+| Nombre | rem      | px aprox |
+| ------ | -------- | -------- |
+| `xs`   | 0.75rem  | 12px     |
+| `sm`   | 0.875rem | 14px     |
+| `base` | 1rem     | 16px     |
+| `lg`   | 1.125rem | 18px     |
+| `xl`   | 1.25rem  | 20px     |
+| `2xl`  | 1.5rem   | 24px     |
+| `3xl`  | 1.875rem | 30px     |
+| `4xl`  | 2.25rem  | 36px     |
 
 ---
 

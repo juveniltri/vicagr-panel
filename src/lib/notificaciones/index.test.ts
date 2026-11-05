@@ -281,7 +281,7 @@ describe("enviarNotificacion", () => {
       emailSmtpPass: "enc",
       emailSmtpPassIv: "iv",
       emailSmtpPassTag: "tag",
-      emailRemitente: "panel@vicalba.com",
+      emailRemitente: "panel@example.com",
       emailDestinatario: "admin@cliente.com",
     });
 

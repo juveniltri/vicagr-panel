@@ -1,3 +1,7 @@
+# NOTE: fijo para que los volúmenes (db-data, letsencrypt) no dependan del nombre de la
+# carpeta del checkout: sin esto, renombrarla crea volúmenes vacíos y pierde BD y certificados.
+name: vicagr
+
 # Docker no limita los logs de los contenedores: sin esto llenan el disco de la VPS.
 x-logging: &logging
   driver: json-file
@@ -6,8 +10,8 @@ x-logging: &logging
     max-file: "3"
 
 networks:
-  vicalba-net:
-    name: vicalba-net
+  vicagr-net:
+    name: vicagr-net
     driver: bridge
 
 volumes:
@@ -32,45 +36,45 @@ services:
       # Proxy). A file, so changing it needs a restart, not a new container.
       CF_DNS_API_TOKEN_FILE: /etc/traefik/static/cf-token
     networks:
-      - vicalba-net
+      - vicagr-net
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # The directory, not the file: a missing file would become a directory.
-      - /var/vicalba/traefik/static:/etc/traefik/static:ro
-      - /var/vicalba/traefik/dynamic:/etc/traefik/dynamic
+      - /var/vicagr/traefik/static:/etc/traefik/static:ro
+      - /var/vicagr/traefik/dynamic:/etc/traefik/dynamic
       - letsencrypt:/letsencrypt
 
   # ── PostgreSQL ───────────────────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
-    container_name: vicalba-db
+    container_name: vicagr-db
     restart: unless-stopped
     logging: *logging
     networks:
-      - vicalba-net
+      - vicagr-net
     environment:
-      POSTGRES_DB: vicalba
-      POSTGRES_USER: vicalba
+      POSTGRES_DB: vicagr
+      POSTGRES_USER: vicagr
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vicalba"]
+      test: ["CMD-SHELL", "pg_isready -U vicagr"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  # ── Panel vicalba-app ────────────────────────────────────────────────────────
+  # ── Panel vicagr-panel ────────────────────────────────────────────────────────
   panel:
     build: .
-    container_name: vicalba-panel
+    container_name: vicagr-panel
     restart: unless-stopped
     logging: *logging
     networks:
-      - vicalba-net
+      - vicagr-net
     # Emergency access when Traefik is down: ssh -L 3000:localhost:3000 <vps>
     ports:
       - "127.0.0.1:3000:3000"
@@ -88,9 +92,9 @@ services:
       TRAEFIK_DYNAMIC_DIR: /etc/traefik/dynamic
       TRAEFIK_STATIC_DIR: /etc/traefik/static
       ACME_EMAIL: ${ACME_EMAIL:-}
-      REPOS_DIR: /var/vicalba/repos
+      REPOS_DIR: /var/vicagr/repos
       # Destino local de los backups (Configuración → Backups); misma ruta que en el host
-      BACKUPS_LOCAL_DIR: /var/vicalba/backups
+      BACKUPS_LOCAL_DIR: /var/vicagr/backups
       # Ruta del fichero de certificados DENTRO del contenedor traefik (debe
       # coincidir con el `storage` que genera el panel) — el panel lo lee vía `docker
       # exec` sobre ese contenedor (leerFicheroTraefik), no como fichero propio:
@@ -104,13 +108,13 @@ services:
       # y ejecutar `docker exec` en el contenedor traefik (ver ACME_JSON_PATH)
       - /var/run/docker.sock:/var/run/docker.sock
       # Config dinámica de Traefik — compartida con el contenedor traefik
-      - /var/vicalba/traefik/dynamic:/etc/traefik/dynamic
+      - /var/vicagr/traefik/dynamic:/etc/traefik/dynamic
       # Config estática de Traefik — la escribe el panel (Configuración → Proxy)
-      - /var/vicalba/traefik/static:/etc/traefik/static
+      - /var/vicagr/traefik/static:/etc/traefik/static
       # Repositorios clonados para los deploys
-      - /var/vicalba/repos:/var/vicalba/repos
+      - /var/vicagr/repos:/var/vicagr/repos
       # Destino local de los backups (opcional; monta aquí un disco aparte si puedes)
-      - /var/vicalba/backups:/var/vicalba/backups
+      - /var/vicagr/backups:/var/vicagr/backups
       # Métricas del host — solo lectura
       - /proc:/host/proc:ro
       - /:/hostroot:ro,rslave

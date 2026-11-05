@@ -91,7 +91,7 @@ vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
 
 vi.mock("@/env", () => ({
   env: {
-    REPOS_DIR: "/var/vicalba/repos",
+    REPOS_DIR: "/var/vicagr/repos",
     NODE_ENV: "test",
     NEXTAUTH_URL: "http://localhost:3000",
     NEXTAUTH_SECRET: "test-secret",
@@ -113,7 +113,7 @@ import { appRouter } from "@/server/routers/_app";
 const createCaller = createCallerFactory(appRouter);
 
 const mockSession = {
-  user: { id: "u1", email: "admin@vicalba.local", name: "Admin" },
+  user: { id: "u1", email: "admin@vicagr.local", name: "Admin" },
   expires: "2099-01-01",
 };
 
