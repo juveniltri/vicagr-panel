@@ -444,6 +444,7 @@ Ver `CONTEXT.md` para el glosario completo.
     cancelar, borrar copias al eliminar), destino local y «Solo desde Cloudflare» por ruta; pendientes de la fase A resueltos
     (1586 tests). Pendiente en la VPS de desarrollo: verificar los backups de Proyectos (`production.md` § B2b) y certificados reales con Cloudflare.
   - Versión 2.5.0 (`release/2.5.0`): login con Pocket ID (OIDC opcional, `User.oidcSub` vinculado a mano, sesión de 12 h, guía en `production.md` § F) y fuentes locales. Probado en real: Pocket ID en la VPS de producción y login en el Panel de desarrollo. Pendiente: conectar el Panel de producción y restaurar un backup de Pocket ID.
+  - Versión 3.0.0 (`release/3.0.0`): renombrado `vicalba` → `vicagr` en todo (`/var/vicagr`, red `vicagr-net`, contenedores `vicagr-db`/`vicagr-panel`, BD y usuario `vicagr`, proyecto de compose `vicagr`, host de restic). Exige migrar cada VPS con `production.md` § B1a; probado en la VPS de desarrollo. Las cabeceras antiguas `# generado por vicalba-panel` de Traefik se siguen reconociendo (HACK en `src/lib/traefik/config.ts`, quitar en la release siguiente). Pendiente: migrar producción, `restic rewrite --new-host` de las copias antiguas y renombrar el repositorio en GitHub.
 - **En construcción:** —
 - **Bloqueado / pendiente:** ver `docs/roadmap.md`
 - **Próximo hito:** verificar la 2.4.0 y la 2.5.0 en las VPS; después E2E, alerta de disco, CSP estricta y cobertura (ver `docs/roadmap.md`)
