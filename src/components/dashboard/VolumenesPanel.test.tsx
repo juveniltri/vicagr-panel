@@ -209,3 +209,57 @@ describe("VolumenesPanel — file manager modal", () => {
     expect(screen.queryByText(/Explorador — galeria/i)).not.toBeInTheDocument();
   });
 });
+
+describe("VolumenesPanel — cuándo se aplica un volumen", () => {
+  const antiguo = {
+    ...mockVolumenes[0],
+    creadoEn: new Date("2026-11-01T10:00:00Z"),
+  };
+  const nuevo = {
+    id: "v2",
+    nombre: "subidas",
+    rutaContenedor: "/app/uploads",
+    creadoEn: new Date("2026-11-10T10:00:00Z"),
+  };
+
+  it("al crear avisa de que hace falta un deploy y de que Reiniciar no basta", () => {
+    render(<VolumenesPanel proyectoId="p1" volumenesIniciales={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: /nuevo volumen/i }));
+
+    const aviso = screen.getByRole("note");
+    expect(aviso).toHaveTextContent("próximo deploy");
+    expect(aviso).toHaveTextContent("Reiniciar no basta");
+    expect(aviso).toHaveTextContent("se copian al volumen");
+  });
+
+  it("marca como pendiente de deploy solo el volumen creado después del último deploy", () => {
+    render(
+      <VolumenesPanel
+        proyectoId="p1"
+        volumenesIniciales={[antiguo, nuevo]}
+        ultimoDeployEn={new Date("2026-11-05T10:00:00Z")}
+      />,
+    );
+
+    const filas = screen.getAllByRole("row");
+    expect(filas[1]).not.toHaveTextContent("Pendiente de deploy");
+    expect(filas[2]).toHaveTextContent("Pendiente de deploy");
+  });
+
+  it("sin ningún deploy correcto todos están pendientes", () => {
+    render(<VolumenesPanel proyectoId="p1" volumenesIniciales={[antiguo]} />);
+
+    expect(screen.getByText("Pendiente de deploy")).toBeInTheDocument();
+  });
+
+  it("en un Proyecto de tipo compose no deja crear volúmenes y explica por qué", () => {
+    render(
+      <VolumenesPanel proyectoId="p1" volumenesIniciales={[]} esCompose />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /nuevo volumen/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("docker-compose.yml");
+  });
+});

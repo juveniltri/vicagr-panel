@@ -1,7 +1,9 @@
 import { execFile, spawn } from "node:child_process";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
+import { IMAGEN_AUXILIAR } from "@/lib/backups/comandos";
+import { ejecutar, encadenar, ErrorProceso } from "@/lib/backups/procesos";
 import { logger } from "@/lib/logger";
 import {
   apuntarEnvFile,
@@ -389,6 +391,117 @@ async function limpiarDisco(onLog?: (line: string) => void): Promise<void> {
   }
 }
 
+// As root in a helper container: the files belong to the app's user, which the
+// Panel (uid 1001) can neither create nor delete.
+const enVolumen = (rutaHost: string, ...comando: string[]) => ({
+  comando: "docker",
+  args: [
+    "run",
+    "--rm",
+    "-i",
+    "--network",
+    "none",
+    "-v",
+    `${rutaHost}:/destino`,
+    IMAGEN_AUXILIAR,
+    ...comando,
+  ],
+});
+
+// A Volumen is an empty host folder mounted over the container path. Without
+// this, what the image has there is hidden and what the container created at
+// runtime (uploads) is lost when the deploy recreates it. Only empty Volúmenes
+// are seeded, from the container about to be replaced or, on a first deploy,
+// from the image.
+async function sembrarVolumenesNuevos(params: {
+  volumenes: Array<{ rutaHost: string; rutaContenedor: string }>;
+  projectSlug: string;
+  composeFile: string;
+  imagen: string | null;
+  onLog?: (line: string) => void;
+  signal?: AbortSignal;
+}): Promise<void> {
+  const { projectSlug, composeFile, imagen, onLog, signal } = params;
+  const vacios: typeof params.volumenes = [];
+  for (const v of params.volumenes) {
+    await mkdir(v.rutaHost, { recursive: true });
+    if ((await readdir(v.rutaHost)).length === 0) vacios.push(v);
+  }
+  if (!vacios.length) return;
+
+  const [previo] = await docker.listContainers({
+    all: true,
+    filters: {
+      label: [
+        `com.docker.compose.project=${projectSlug}`,
+        "com.docker.compose.service=app",
+      ],
+    },
+  });
+  let origen = previo?.Id;
+  let temporal: string | undefined;
+  if (!origen) {
+    onLog?.("→ Preparando la imagen para rellenar los volúmenes nuevos...");
+    await spawnDockerCompose(
+      [
+        "compose",
+        "-p",
+        projectSlug,
+        "-f",
+        composeFile,
+        imagen ? "pull" : "build",
+      ],
+      onLog,
+      signal,
+    );
+    // Compose names the image it builds <proyecto>-<servicio>.
+    const creado = await ejecutar(
+      "docker",
+      ["create", imagen ?? `${projectSlug}-app`],
+      { signal },
+    );
+    origen = temporal = creado.trim();
+  }
+
+  try {
+    for (const { rutaHost, rutaContenedor } of vacios) {
+      onLog?.(`→ Copiando al volumen lo que había en ${rutaContenedor}...`);
+      try {
+        await encadenar(
+          {
+            comando: "docker",
+            args: ["cp", `${origen}:${rutaContenedor}/.`, "-"],
+          },
+          enVolumen(rutaHost, "tar", "-x", "-C", "/destino"),
+          { signal },
+        );
+      } catch (err) {
+        // Nothing at that path in the container: an empty Volumen is right.
+        if (
+          err instanceof ErrorProceso &&
+          /Could not find the file/i.test(err.message)
+        )
+          continue;
+        // Half a copy would pass for a seeded Volumen on the next deploy, which
+        // would then recreate the container and lose the rest.
+        const vaciar = enVolumen(
+          rutaHost,
+          "find",
+          "/destino",
+          "-mindepth",
+          "1",
+          "-delete",
+        );
+        await ejecutar(vaciar.comando, vaciar.args, {}).catch(() => {});
+        throw err;
+      }
+    }
+  } finally {
+    if (temporal)
+      await ejecutar("docker", ["rm", "-f", temporal], {}).catch(() => {});
+  }
+}
+
 export async function deployProyecto(params: {
   tipo: string;
   repoUrl?: string | null;
@@ -657,10 +770,20 @@ export async function deployProyecto(params: {
       "--force-recreate",
     ];
 
-    onLog?.("→ Construyendo e iniciando contenedores...");
-
     let output = "";
     try {
+      // Generated composes only: the Panel does not mount Volúmenes in a
+      // compose Proyecto.
+      if (tipo !== "compose")
+        await sembrarVolumenesNuevos({
+          volumenes,
+          projectSlug,
+          composeFile,
+          imagen: tipo === "image" ? imagenUrl! : null,
+          onLog,
+          signal,
+        });
+      onLog?.("→ Construyendo e iniciando contenedores...");
       output = await spawnDockerCompose(composeArgs, onLog, signal);
     } finally {
       if (escribioEnvLocal) {

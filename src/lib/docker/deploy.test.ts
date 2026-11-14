@@ -63,6 +63,19 @@ const {
   };
 });
 
+const { mockReaddir, mockEjecutar, mockEncadenar } = vi.hoisted(() => ({
+  // Not empty by default: only an empty volume is seeded.
+  mockReaddir: vi.fn().mockResolvedValue(["ya-hay-datos"]),
+  mockEjecutar: vi.fn().mockResolvedValue(""),
+  mockEncadenar: vi.fn().mockResolvedValue(""),
+}));
+
+vi.mock("@/lib/backups/procesos", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/backups/procesos")>()),
+  ejecutar: mockEjecutar,
+  encadenar: mockEncadenar,
+}));
+
 vi.mock("node:child_process", () => ({
   execFile: mockExecFile,
   spawn: mockSpawn,
@@ -72,6 +85,7 @@ vi.mock("node:fs/promises", () => ({
   mkdir: mockMkdir,
   unlink: mockUnlink,
   readFile: mockReadFile,
+  readdir: mockReaddir,
 }));
 vi.mock("@/env", () => ({
   env: {
@@ -89,6 +103,7 @@ vi.mock("dockerode", () => ({
   }),
 }));
 
+import { ErrorProceso } from "@/lib/backups/procesos";
 import { deployProyecto } from "./deploy";
 
 const makeSpawnResult = (
@@ -1110,5 +1125,160 @@ describe("deployProyecto — limpieza de disco", () => {
 
     await expect(deployProyecto(baseParams)).rejects.toThrow();
     expect(llamadasDocker()).toEqual([]);
+  });
+});
+
+// A Volumen is an empty host folder mounted over the container path: without
+// seeding it, what the container had there is hidden, and what it had created
+// at runtime (uploads) is lost when the deploy recreates it.
+describe("deployProyecto — Volúmenes nuevos", () => {
+  const rutaHost = "/var/vicagr/repos/acme/web-app/volumes/uploads";
+  const conVolumen = {
+    ...baseParams,
+    tipo: "image",
+    imagenUrl: "wordpress:6",
+    volumenes: [{ rutaHost, rutaContenedor: "/var/www/html/wp-content" }],
+  };
+  const ordenDe = (mock: { mock: { invocationCallOrder: number[] } }) =>
+    mock.mock.invocationCallOrder[0];
+  const composeArgs = () =>
+    mockSpawn.mock.calls.map(([, args]) => (args as string[]).join(" "));
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue("");
+    mockUnlink.mockResolvedValue(undefined);
+    mockReaddir.mockResolvedValue([]);
+    mockEjecutar.mockResolvedValue("");
+    mockEncadenar.mockResolvedValue("");
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => cb(null, "", ""),
+    );
+  });
+
+  it("copia al Volumen vacío lo que el contenedor en marcha tiene en esa ruta, antes de recrearlo", async () => {
+    mockListContainers.mockResolvedValue([{ Id: "previo123", Labels: {} }]);
+
+    await deployProyecto(conVolumen);
+
+    expect(mockEncadenar).toHaveBeenCalledWith(
+      {
+        comando: "docker",
+        args: ["cp", "previo123:/var/www/html/wp-content/.", "-"],
+      },
+      {
+        comando: "docker",
+        args: [
+          "run",
+          "--rm",
+          "-i",
+          "--network",
+          "none",
+          "-v",
+          `${rutaHost}:/destino`,
+          "busybox:1.37.0",
+          "tar",
+          "-x",
+          "-C",
+          "/destino",
+        ],
+      },
+      expect.anything(),
+    );
+    expect(ordenDe(mockEncadenar)).toBeLessThan(ordenDe(mockSpawn));
+  });
+
+  it("no toca un Volumen que ya tiene ficheros", async () => {
+    mockReaddir.mockResolvedValue(["2026"]);
+    mockListContainers.mockResolvedValue([{ Id: "previo123", Labels: {} }]);
+
+    await deployProyecto(conVolumen);
+
+    expect(mockEncadenar).not.toHaveBeenCalled();
+  });
+
+  it("en el primer deploy copia desde la imagen y borra el contenedor temporal", async () => {
+    mockEjecutar.mockImplementation(async (_cmd: string, args: string[]) =>
+      args[0] === "create" ? "temporal456\n" : "",
+    );
+
+    await deployProyecto(conVolumen);
+
+    expect(composeArgs()[0]).toMatch(/ pull$/);
+    expect(mockEjecutar).toHaveBeenCalledWith(
+      "docker",
+      ["create", "wordpress:6"],
+      expect.anything(),
+    );
+    expect(mockEncadenar.mock.calls[0][0].args).toEqual([
+      "cp",
+      "temporal456:/var/www/html/wp-content/.",
+      "-",
+    ]);
+    expect(mockEjecutar).toHaveBeenCalledWith(
+      "docker",
+      ["rm", "-f", "temporal456"],
+      expect.anything(),
+    );
+  });
+
+  it("un Proyecto con build construye la imagen antes de copiar desde ella", async () => {
+    mockEjecutar.mockImplementation(async (_cmd: string, args: string[]) =>
+      args[0] === "create" ? "temporal456\n" : "",
+    );
+
+    await deployProyecto({ ...conVolumen, tipo: "dockerfile" });
+
+    expect(composeArgs()[0]).toMatch(/ build$/);
+    expect(mockEjecutar).toHaveBeenCalledWith(
+      "docker",
+      ["create", "acme-web-app-app"],
+      expect.anything(),
+    );
+  });
+
+  it("si la ruta no existe en el contenedor deja el Volumen vacío y sigue", async () => {
+    mockListContainers.mockResolvedValue([{ Id: "previo123", Labels: {} }]);
+    mockEncadenar.mockRejectedValue(
+      new ErrorProceso(
+        "docker terminó con código 1:\nError response from daemon: Could not find the file /var/www/html/wp-content/. in container previo123",
+        1,
+        "",
+      ),
+    );
+
+    await expect(deployProyecto(conVolumen)).resolves.toBeDefined();
+  });
+
+  it("si la copia falla, el deploy se detiene sin recrear el contenedor y el Volumen queda vacío", async () => {
+    mockListContainers.mockResolvedValue([{ Id: "previo123", Labels: {} }]);
+    mockEncadenar.mockRejectedValue(
+      new ErrorProceso("docker terminó con código 1:\nno space left", 1, ""),
+    );
+
+    await expect(deployProyecto(conVolumen)).rejects.toThrow("no space left");
+
+    expect(mockSpawn).not.toHaveBeenCalled();
+    // Half a copy must not pass for a seeded Volumen on the next deploy.
+    expect(mockEjecutar).toHaveBeenCalledWith(
+      "docker",
+      expect.arrayContaining(["-v", `${rutaHost}:/destino`, "find"]),
+      expect.anything(),
+    );
+  });
+
+  it("los Proyectos de tipo compose no siembran: el Panel no monta sus Volúmenes", async () => {
+    await deployProyecto({ ...baseParams, volumenes: conVolumen.volumenes });
+
+    expect(mockEncadenar).not.toHaveBeenCalled();
   });
 });

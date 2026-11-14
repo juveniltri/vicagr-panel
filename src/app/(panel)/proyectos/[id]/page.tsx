@@ -550,7 +550,14 @@ export default async function DetalleProyectoPage({
 
       {pestana === "volumenes" && (
         <Card titulo="Volúmenes">
-          <VolumenesPanel proyectoId={id} volumenesIniciales={volumenes} />
+          <VolumenesPanel
+            proyectoId={id}
+            volumenesIniciales={volumenes}
+            ultimoDeployEn={
+              deploys.find((d) => d.resultado === "exito")?.iniciadoEn ?? null
+            }
+            esCompose={proyecto.tipo === "compose"}
+          />
         </Card>
       )}
 
