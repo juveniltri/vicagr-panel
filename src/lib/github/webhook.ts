@@ -34,3 +34,23 @@ function normalizarRepoUrl(url: string): string {
 export function mismoRepositorio(a: string, b: string): boolean {
   return normalizarRepoUrl(a) === normalizarRepoUrl(b);
 }
+
+// GitHub caps its payloads at 25 MB; nothing bigger is a real delivery.
+export const LIMITE_CUERPO = { bytes: 25 * 1024 * 1024 };
+
+// Read with a ceiling: the signature can only be checked on the whole body,
+// so without one anybody could make the Panel buffer an endless request.
+// null means it was too big.
+export async function leerCuerpo(req: Request): Promise<string | null> {
+  if (Number(req.headers.get("content-length")) > LIMITE_CUERPO.bytes)
+    return null;
+  if (!req.body) return "";
+  const trozos: Uint8Array[] = [];
+  let total = 0;
+  for await (const trozo of req.body as unknown as AsyncIterable<Uint8Array>) {
+    total += trozo.length;
+    if (total > LIMITE_CUERPO.bytes) return null;
+    trozos.push(trozo);
+  }
+  return Buffer.concat(trozos).toString("utf-8");
+}
