@@ -221,13 +221,41 @@ describe("restartProyecto", () => {
     expect(mockStart).not.toHaveBeenCalled();
   });
 
-  it("solo consulta contenedores en marcha (all=false)", async () => {
-    mockListContainers.mockResolvedValue([]);
+  // A crashed container is exactly what Reiniciar is pressed for; a one-shot
+  // job that finished (migrations) must not run again.
+  it("levanta también los contenedores caídos, pero no repite los que terminaron bien", async () => {
+    mockListContainers.mockResolvedValue([
+      { ...makeContainer("c1", "web"), State: "running", Status: "Up 2 hours" },
+      {
+        ...makeContainer("c2", "worker"),
+        State: "exited",
+        Status: "Exited (1) 5 minutes ago",
+      },
+      {
+        ...makeContainer("c3", "migrar"),
+        State: "exited",
+        Status: "Exited (0) 2 hours ago",
+      },
+    ]);
     await restartProyecto("cliente-uno", "web-app");
 
     expect(mockListContainers).toHaveBeenCalledWith(
-      expect.objectContaining({ all: false }),
+      expect.objectContaining({ all: true }),
     );
+    expect(mockGetContainer.mock.calls.map(([id]) => id)).toEqual(["c1", "c2"]);
+  });
+
+  it("al reiniciar un Servicio concreto lo arranca aunque estuviera parado", async () => {
+    mockListContainers.mockResolvedValue([
+      {
+        ...makeContainer("c3", "web"),
+        State: "exited",
+        Status: "Exited (143) 2 hours ago",
+      },
+    ]);
+    await restartProyecto("cliente-uno", "web-app", "web");
+
+    expect(mockGetContainer).toHaveBeenCalledWith("c3");
   });
 
   it("ignora 304 en restart", async () => {
@@ -302,7 +330,7 @@ describe("acciones sobre un servicio", () => {
     await restartProyecto("cliente-uno", "web-app", "worker");
 
     expect(mockListContainers).toHaveBeenCalledWith({
-      all: false,
+      all: true,
       filters: filtroServicio,
     });
     expect(mockRestart).toHaveBeenCalledTimes(1);

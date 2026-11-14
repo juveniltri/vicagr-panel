@@ -142,7 +142,15 @@ export async function restartProyecto(
   servicio?: string,
 ): Promise<void> {
   const slug = projectSlug(clienteSlug, proyectoNombre);
-  const containers = await listProjectContainers(slug, false, servicio);
+  const todos = await listProjectContainers(slug, true, servicio);
+  // Crashed containers are what Reiniciar is pressed for. One that exited
+  // cleanly (a one-shot job, or stopped on purpose) only comes back when its
+  // Servicio is restarted by name.
+  const containers = servicio
+    ? todos
+    : todos.filter(
+        (c) => !(c.State === "exited" && estadoDeContenedor(c) === "stopped"),
+      );
   for (const c of containers) {
     try {
       await docker.getContainer(c.Id).restart();
