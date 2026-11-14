@@ -14,7 +14,9 @@ import {
   prepararRepo,
 } from "@/lib/docker/deploy";
 import { desconectarTraefikDeRed } from "@/lib/docker/traefik";
-import { descifrar } from "@/lib/crypto";
+import { randomBytes } from "node:crypto";
+import { PLANTILLA_WORDPRESS } from "@/lib/compose";
+import { cifrar, descifrar } from "@/lib/crypto";
 import { env } from "@/env";
 import { rutaHostVolumen } from "@/lib/volumenes";
 import { TIMEOUT_DEPLOY_POR_DEFECTO } from "@/server/routers/configuracion";
@@ -431,6 +433,8 @@ export const proyectosRouter = router({
         clienteId: z.string(),
         // Shortcut for the first route; the rest live in the Dominios tab.
         dominio: dominioSchema.optional(),
+        // Starts the Proyecto from a ready-made compose and its variables.
+        plantilla: z.enum(["wordpress"]).optional(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -449,6 +453,12 @@ export const proyectosRouter = router({
           path: "",
           redireccionWww: "ninguna",
         });
+      const wordpress = input.plantilla === "wordpress";
+      // Hex, so the value can be dropped into the compose as it is.
+      const secreto = (clave: string) => ({
+        clave,
+        ...cifrar(randomBytes(24).toString("hex")),
+      });
       const creado = await prisma.proyecto.create({
         data: {
           nombre: input.nombre,
@@ -458,10 +468,16 @@ export const proyectosRouter = router({
               create: { dominio: input.dominio, puerto: input.puerto ?? 80 },
             },
           }),
+          ...(wordpress && {
+            composeContent: PLANTILLA_WORDPRESS,
+            variables: {
+              create: [secreto("DB_PASSWORD"), secreto("DB_ROOT_PASSWORD")],
+            },
+          }),
           repositorioUrl: input.repositorioUrl,
           rama: input.rama ?? "main",
-          tipo: input.tipo ?? "compose",
-          puerto: input.puerto,
+          tipo: wordpress ? "compose" : (input.tipo ?? "compose"),
+          puerto: wordpress ? 80 : input.puerto,
           imagenUrl: input.imagenUrl,
           dockerfilePath: input.dockerfilePath,
           buildCommand: input.buildCommand,

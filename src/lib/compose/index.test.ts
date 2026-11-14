@@ -5,6 +5,7 @@ import {
   encontrarServicioPorPuerto,
   extraerServicios,
   generarOverrideLogging,
+  PLANTILLA_WORDPRESS,
 } from "./index";
 
 describe("apuntarEnvFile", () => {
@@ -227,5 +228,47 @@ services:
   it("limita también un servicio declarado sin definición", () => {
     const override = generarOverrideLogging("services:\n  web:\n");
     expect(Object.keys(parse(override!).services)).toEqual(["web"]);
+  });
+});
+
+describe("PLANTILLA_WORDPRESS", () => {
+  const compose = parse(PLANTILLA_WORDPRESS) as {
+    services: Record<string, Record<string, unknown>>;
+    volumes: Record<string, unknown>;
+  };
+
+  it("es un compose válido con WordPress y su base de datos", () => {
+    expect(extraerServicios(PLANTILLA_WORDPRESS)).toEqual(["wordpress", "db"]);
+  });
+
+  it("el Servicio que recibe el tráfico del dominio es WordPress, en el puerto 80", () => {
+    expect(encontrarServicioPorPuerto(PLANTILLA_WORDPRESS, 80)).toBe(
+      "wordpress",
+    );
+  });
+
+  // Named volumes are what the backups of Proyectos detect on their own.
+  it("guarda wp-content y la base de datos en volúmenes con nombre", () => {
+    expect(Object.keys(compose.volumes)).toEqual(["wp-content", "db-data"]);
+    expect(compose.services.wordpress.volumes).toEqual([
+      "wp-content:/var/www/html/wp-content",
+    ]);
+    expect(compose.services.db.volumes).toEqual(["db-data:/var/lib/mysql"]);
+  });
+
+  it("las contraseñas salen de las variables del Proyecto, no van escritas", () => {
+    expect(compose.services.db.environment).toMatchObject({
+      MARIADB_PASSWORD: "${DB_PASSWORD}",
+      MARIADB_ROOT_PASSWORD: "${DB_ROOT_PASSWORD}",
+    });
+    expect(compose.services.wordpress.environment).toMatchObject({
+      WORDPRESS_DB_PASSWORD: "${DB_PASSWORD}",
+    });
+  });
+
+  it("vuelve a arrancar sola y recibe el límite de logs del Panel", () => {
+    expect(compose.services.wordpress.restart).toBe("unless-stopped");
+    expect(compose.services.db.restart).toBe("unless-stopped");
+    expect(generarOverrideLogging(PLANTILLA_WORDPRESS)).toContain("max-size");
   });
 });

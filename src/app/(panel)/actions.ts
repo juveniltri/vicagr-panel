@@ -93,10 +93,12 @@ export async function crearProyectoAction(
   dockerfilePath?: string,
   buildCommand?: string,
   startCommand?: string,
+  plantilla?: "wordpress",
 ) {
   try {
     const api = await createServerCaller();
     await api.proyectos.crear({
+      plantilla,
       clienteId,
       nombre,
       dominio,

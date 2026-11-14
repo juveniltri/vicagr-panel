@@ -157,7 +157,7 @@ import { eliminarContenedoresProyecto } from "@/lib/docker/proyectos";
 import { desconectarTraefikDeRed } from "@/lib/docker/traefik";
 import { readFile } from "node:fs/promises";
 import { asegurarRedCliente, eliminarRedCliente } from "@/lib/docker/networks";
-import { descifrar } from "@/lib/crypto";
+import { cifrar, descifrar } from "@/lib/crypto";
 import { leerCertificados } from "@/lib/ssl/acme";
 import { enviarNotificacion } from "@/lib/notificaciones";
 import { hayOperacionEnCurso, OperacionEnCurso } from "@/lib/backups/operacion";
@@ -3388,5 +3388,70 @@ describe("proyectos.eliminar — lo que deja en la VPS", () => {
     expect(
       vi.mocked(desconectarTraefikDeRed).mock.invocationCallOrder[0],
     ).toBeLessThan(vi.mocked(eliminarRedCliente).mock.invocationCallOrder[0]);
+  });
+});
+
+describe("proyectos.crear — plantilla WordPress", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.cliente.findUnique).mockResolvedValue(
+      mockClienteRow as never,
+    );
+    vi.mocked(prisma.proyecto.create).mockResolvedValue({
+      ...mockProyecto,
+      cliente: mockClienteRow,
+    } as never);
+  });
+
+  const datosCreados = () =>
+    vi.mocked(prisma.proyecto.create).mock.calls[0][0].data as {
+      tipo: string;
+      puerto: number;
+      composeContent?: string;
+      variables?: { create: Array<{ clave: string; valorCifrado: string }> };
+    };
+
+  it("crea un Proyecto compose con WordPress y su base de datos, en el puerto 80", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.crear({
+      clienteId: "c1",
+      nombre: "blog",
+      tipo: "nodejs",
+      puerto: 3000,
+      plantilla: "wordpress",
+    });
+
+    expect(datosCreados()).toMatchObject({ tipo: "compose", puerto: 80 });
+    expect(datosCreados().composeContent).toContain("wordpress:6-apache");
+    expect(datosCreados().composeContent).toContain("mariadb:11");
+  });
+
+  it("genera las contraseñas de la base de datos como variables cifradas del Proyecto", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.crear({
+      clienteId: "c1",
+      nombre: "blog",
+      plantilla: "wordpress",
+    });
+
+    expect(datosCreados().variables?.create.map((v) => v.clave)).toEqual([
+      "DB_PASSWORD",
+      "DB_ROOT_PASSWORD",
+    ]);
+    // Random and hex: safe to drop into the compose as it is.
+    const valores = vi.mocked(cifrar).mock.calls.map(([valor]) => valor);
+    expect(valores).toHaveLength(2);
+    expect(valores[0]).toMatch(/^[0-9a-f]{48}$/);
+    expect(valores[0]).not.toBe(valores[1]);
+  });
+
+  it("sin plantilla no añade compose ni variables", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.crear({ clienteId: "c1", nombre: "api" });
+
+    expect(datosCreados().composeContent).toBeUndefined();
+    expect(datosCreados().variables).toBeUndefined();
   });
 });

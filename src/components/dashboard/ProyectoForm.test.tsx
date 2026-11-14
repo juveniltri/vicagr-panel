@@ -428,3 +428,50 @@ describe("EliminarProyectoButton — datos de la VPS", () => {
     );
   });
 });
+
+describe("ProyectoFormModal — plantillas", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(crearProyectoAction).mockResolvedValue(undefined);
+  });
+
+  const elegir = (nombre: RegExp) => {
+    fireEvent.click(screen.getByLabelText("Plantilla"));
+    fireEvent.click(screen.getByRole("option", { name: nombre }));
+  };
+  const crear = async () => {
+    fireEvent.change(screen.getByLabelText(/nombre/i), {
+      target: { value: "blog" },
+    });
+    fireEvent.submit(screen.getByLabelText(/nombre/i).closest("form")!);
+    await waitFor(() => expect(crearProyectoAction).toHaveBeenCalled());
+    return vi.mocked(crearProyectoAction).mock.calls[0];
+  };
+
+  it("WordPress crea un Proyecto compose en el puerto 80 y pide la plantilla al servidor", async () => {
+    render(<ProyectoFormModal clienteId={CLIENT_ID} onClose={onClose} />);
+    elegir(/WordPress/);
+
+    expect(screen.getByRole("note")).toHaveTextContent("MariaDB");
+    const args = await crear();
+    expect(args[5]).toBe("compose");
+    expect(args[6]).toBe(80);
+    expect(args.at(-1)).toBe("wordpress");
+  });
+
+  it("Next.js rellena tipo, puerto y comandos, que se pueden cambiar", async () => {
+    render(<ProyectoFormModal clienteId={CLIENT_ID} onClose={onClose} />);
+    elegir(/Next\.js/);
+
+    const args = await crear();
+    expect(args.slice(5, 7)).toEqual(["nodejs", 3000]);
+    expect(args.slice(9, 11)).toEqual(["npm run build", "npm start"]);
+    expect(args).toHaveLength(11);
+  });
+
+  it("al editar un Proyecto no se ofrecen plantillas", () => {
+    render(<ProyectoFormModal proyecto={mockProyecto} onClose={onClose} />);
+
+    expect(screen.queryByLabelText("Plantilla")).toBeNull();
+  });
+});

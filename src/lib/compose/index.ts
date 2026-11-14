@@ -99,3 +99,55 @@ export function generarOverrideLogging(content: string): string | null {
   );
   return stringify({ services: override }, { aliasDuplicateObjects: false });
 }
+
+// Plantilla de Proyecto WordPress: what every WordPress here needs and was
+// being set up by hand. ${DB_PASSWORD} and ${DB_ROOT_PASSWORD} are created as
+// variables of the Proyecto, with random values, when it is created.
+// - Named volumes, so the backups of Proyectos pick up the database and
+//   wp-content on their own.
+// - PHP's default upload limit is 2 MB: raised before Apache starts.
+// - The official image already trusts X-Forwarded-Proto, which Traefik sends.
+export const PLANTILLA_WORDPRESS = `services:
+  wordpress:
+    image: wordpress:6-apache
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - >-
+        echo 'upload_max_filesize=64M' > /usr/local/etc/php/conf.d/subidas.ini &&
+        echo 'post_max_size=64M' >> /usr/local/etc/php/conf.d/subidas.ini &&
+        exec docker-entrypoint.sh apache2-foreground
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: "\${DB_PASSWORD}"
+    volumes:
+      - wp-content:/var/www/html/wp-content
+    expose:
+      - "80"
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 1g
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: "\${DB_PASSWORD}"
+      MARIADB_ROOT_PASSWORD: "\${DB_ROOT_PASSWORD}"
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    mem_limit: 1g
+volumes:
+  wp-content:
+  db-data:
+`;

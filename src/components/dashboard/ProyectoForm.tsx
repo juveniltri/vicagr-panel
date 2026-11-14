@@ -18,6 +18,14 @@ const TIPOS: { value: TipoProyecto; label: string }[] = [
   { value: "nodejs", label: "Node.js" },
 ];
 
+type Plantilla = "ninguna" | "wordpress" | "nextjs";
+
+const PLANTILLAS: { value: Plantilla; label: string }[] = [
+  { value: "ninguna", label: "Ninguna" },
+  { value: "wordpress", label: "WordPress (con MariaDB)" },
+  { value: "nextjs", label: "Next.js" },
+];
+
 const USA_REPO: TipoProyecto[] = ["dockerfile", "nodejs"];
 const REPO_OPCIONAL: TipoProyecto[] = ["compose"];
 
@@ -76,8 +84,24 @@ export function ProyectoFormModal({
     String(proyecto?.limiteMemoriaMb ?? ""),
   );
   const [cpus, setCpus] = useState(String(proyecto?.limiteCpus ?? ""));
+  const [plantilla, setPlantilla] = useState<Plantilla>("ninguna");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // A template only fills the form in; everything stays editable.
+  function elegirPlantilla(elegida: Plantilla) {
+    setPlantilla(elegida);
+    if (elegida === "wordpress") {
+      setTipo("compose");
+      setPuerto("80");
+      setRepositorioUrl("");
+    } else if (elegida === "nextjs") {
+      setTipo("nodejs");
+      setPuerto("3000");
+      setBuildCommand("npm run build");
+      setStartCommand("npm start");
+    }
+  }
   // The Panel only limits the composes it generates.
   const mostrarLimites =
     proyecto?.limiteMemoriaMb != null && tipo !== "compose";
@@ -135,6 +159,7 @@ export function ProyectoFormModal({
           dockerfilePathFinal,
           buildCommandFinal,
           startCommandFinal,
+          ...(plantilla === "wordpress" ? (["wordpress"] as const) : []),
         );
     if (result?.error) {
       setError(result.error);
@@ -170,6 +195,30 @@ export function ProyectoFormModal({
               className="font-body text-sm w-full bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-primary-300"
             />
           </div>
+
+          {!isEdit && (
+            <div className="flex flex-col gap-1">
+              <label
+                htmlFor="plantilla"
+                className="font-body text-xs text-text-muted"
+              >
+                Plantilla
+              </label>
+              <Listbox
+                id="plantilla"
+                value={plantilla}
+                options={PLANTILLAS}
+                onChange={elegirPlantilla}
+              />
+              {plantilla === "wordpress" && (
+                <p role="note" className="font-body text-xs text-text-muted">
+                  Crea WordPress con su base de datos MariaDB, volúmenes para
+                  wp-content y los datos, y contraseñas aleatorias en Variables.
+                  Queda listo para instalar tras el primer deploy.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-col gap-1">
             <label htmlFor="tipo" className="font-body text-xs text-text-muted">
