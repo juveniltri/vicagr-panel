@@ -5,6 +5,35 @@ Novedades. Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES
 cada versión con su fecha, un resumen de una línea y los apartados Novedades,
 Correcciones y Seguridad.
 
+## [3.0.1] - 2026-11-14
+
+Las variables con caracteres especiales llegan intactas a los contenedores y el gestor de ficheros
+deja de seguir enlaces simbólicos.
+
+### Correcciones
+
+- **Variables con `$`, `#`, comillas o espacios**: llegaban cortadas o alteradas al contenedor
+  (contraseñas, salts de WordPress). Ahora llegan tal cual se escriben en el Panel, también las de
+  build.
+- **Proyectos de compose pegado de un mismo Cliente**: compartían un fichero de variables y el
+  último deploy pisaba las del otro. Cada Proyecto usa ya el suyo.
+
+### Seguridad
+
+- **Gestor de ficheros**: un contenedor podía dejar en su Volumen un enlace simbólico a ficheros
+  de otro Cliente o de la VPS y el Panel lo seguía al listar, descargar, subir o borrar. Los enlaces
+  se muestran como enlaces y no se abren ni se descargan; borrarlos elimina solo el enlace.
+
+### Al actualizar
+
+- Levanta el stack completo: `git pull && docker compose up -d --build`. No hay migración ni
+  variables nuevas.
+- **Revisa las variables que se apoyaban en el comportamiento anterior** antes de redesplegar: un
+  valor que referencia otra variable (`postgres://${USUARIO}@db`) o que lleva `$$` para escapar un
+  `$` ya no se transforma y llega literal. Escribe el valor final.
+- Redespliega los Proyectos con variables que contengan `$`, `#`, comillas o espacios para que
+  reciban el valor correcto. Detalle en `production.md` § B1b.
+
 ## [3.0.0] - 2026-11-05
 
 El Panel pasa a llamarse vicagr-panel y los nombres internos de la VPS cambian de `vicalba` a

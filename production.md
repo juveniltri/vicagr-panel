@@ -258,6 +258,21 @@ docker compose up -d --build
 Los Proyectos redesplegados con la versión nueva siguen funcionando; vuelve a desplegarlos si
 algo de su configuración depende de la versión anterior.
 
+### B1b. A la 3.0.1 (variables y gestor de ficheros)
+
+Sin migración ni variables nuevas: `git pull && docker compose up -d --build`.
+
+Antes de redesplegar los Proyectos, revisa sus variables en el Panel:
+
+- Desde esta versión el valor llega al contenedor **tal cual está escrito**. Si alguna variable
+  referenciaba a otra (`postgres://${USUARIO}:${CLAVE}@db`) o llevaba `$$` para escapar un `$`,
+  escribe el valor final: ya no se sustituye ni se reduce.
+- Las referencias `${VARIABLE}` escritas en el propio `docker-compose.yml` siguen funcionando.
+
+Después, redespliega los Proyectos cuyas variables contengan `$`, `#`, comillas o espacios. Los
+Proyectos de compose pegado dejan de usar `/var/vicagr/repos/<cliente>/.panel/.env`: el Panel lo
+borra en el primer deploy y cada Proyecto pasa a `<proyecto>.env` en esa misma carpeta.
+
 ### B1a. Renombrado `vicalba` → `vicagr` (versión 3.0.0)
 
 Cambian `/var/vicalba` → `/var/vicagr`, la red `vicalba-net` → `vicagr-net`, los contenedores
