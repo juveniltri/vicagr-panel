@@ -1006,7 +1006,7 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
   it("nodejs: la imagen no incluye el .git del repositorio", async () => {
     await deployProyecto(nodejs);
 
-    expect(writesTo(ignoreGenerado)[0]?.[1]).toBe(".git\n");
+    expect(writesTo(ignoreGenerado)[0]?.[1]).toBe(".git\nvolumes\n");
   });
 
   it("nodejs: respeta el .dockerignore del repositorio y le añade .git", async () => {
@@ -1018,7 +1018,9 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
 
     await deployProyecto(nodejs);
 
-    expect(writesTo(ignoreGenerado)[0]?.[1]).toBe("dist\n*.log\n\n.git\n");
+    expect(writesTo(ignoreGenerado)[0]?.[1]).toBe(
+      "dist\n*.log\n\n.git\nvolumes\n",
+    );
   });
 
   it("compose desde repo no borra un .env.local que no ha creado", async () => {
@@ -1458,5 +1460,126 @@ describe("deployProyecto — límites de recursos", () => {
     await deployProyecto({ ...baseParams, tipo: "image", imagenUrl: "nginx" });
 
     expect(composeGenerado()).not.toContain("mem_limit");
+  });
+});
+
+// The Proyecto's Volúmenes live inside the folder the repository is cloned to.
+describe("deployProyecto — Volúmenes dentro del clon", () => {
+  const gitArgs = () =>
+    mockExecFile.mock.calls
+      .filter(([cmd]) => cmd === "git")
+      .map(([, args]) => (args as string[]).join(" "));
+  const escritos = (ruta: string) =>
+    mockWriteFile.mock.calls.find(([r]) => r === ruta)?.[1] as
+      string | undefined;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue("");
+    mockReaddir.mockResolvedValue(["ya-hay-datos"]);
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+  });
+
+  const git = (yaClonado: boolean) =>
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        args: string[],
+        cb: (err: Error | null, stdout: string, stderr: string) => void,
+      ) =>
+        args.includes("--is-inside-work-tree") && !yaClonado
+          ? cb(new Error("not a git repository"), "", "")
+          : cb(null, "abc1234\n", ""),
+    );
+
+  // `git clone` refuses a folder that already has files, and a Volumen
+  // created before the first deploy puts one there.
+  it("el primer deploy no usa git clone: inicia el repositorio en la carpeta, tenga o no ficheros", async () => {
+    git(false);
+
+    await deployProyecto(baseParams);
+
+    const repo = "/var/vicagr/repos/acme/web-app";
+    expect(gitArgs()).not.toContainEqual(expect.stringMatching(/^clone /));
+    expect(gitArgs()).toEqual(
+      expect.arrayContaining([
+        `init ${repo}`,
+        `-C ${repo} remote add origin https://github.com/org/repo`,
+        `-C ${repo} fetch origin`,
+      ]),
+    );
+  });
+
+  it("en los siguientes apunta el remoto a la URL actual, por si se cambió el repositorio del Proyecto", async () => {
+    git(true);
+
+    await deployProyecto(baseParams);
+
+    expect(gitArgs()).toContain(
+      "-C /var/vicagr/repos/acme/web-app remote set-url origin https://github.com/org/repo",
+    );
+    expect(gitArgs()).not.toContainEqual(expect.stringMatching(/^init /));
+  });
+
+  it("nodejs: los Volúmenes no entran en la imagen", async () => {
+    git(true);
+
+    await deployProyecto({ ...baseParams, tipo: "nodejs" });
+
+    expect(
+      escritos("/var/vicagr/repos/acme/.panel/web-app.Dockerfile.dockerignore"),
+    ).toBe(".git\nvolumes\n");
+  });
+
+  const ignorePropio = "/var/vicagr/repos/acme/web-app/Dockerfile.dockerignore";
+  const conVolumen = {
+    ...baseParams,
+    tipo: "dockerfile",
+    volumenes: [
+      {
+        rutaHost: "/var/vicagr/repos/acme/web-app/volumes/uploads",
+        rutaContenedor: "/app/uploads",
+      },
+    ],
+  };
+
+  it("dockerfile con Volúmenes: escribe un dockerignore junto al Dockerfile con las reglas del repositorio y los Volúmenes", async () => {
+    git(true);
+    mockReadFile.mockImplementation(async (ruta: string) => {
+      if (ruta === "/var/vicagr/repos/acme/web-app/.dockerignore")
+        return "node_modules\n";
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+
+    await deployProyecto(conVolumen);
+
+    expect(escritos(ignorePropio)).toBe(
+      "# generado por vicagr-panel\nnode_modules\n\nvolumes\n",
+    );
+  });
+
+  it("dockerfile con Volúmenes: no pisa un dockerignore que el repositorio ya trae para ese Dockerfile, y lo avisa", async () => {
+    git(true);
+    mockReadFile.mockImplementation(async (ruta: string) =>
+      ruta === ignorePropio ? "dist\n" : "",
+    );
+    const lineas: string[] = [];
+
+    await deployProyecto({ ...conVolumen, onLog: (l) => lineas.push(l) });
+
+    expect(escritos(ignorePropio)).toBeUndefined();
+    expect(lineas.join("\n")).toContain("añade «volumes» a");
+  });
+
+  it("dockerfile sin Volúmenes no escribe nada en el repositorio", async () => {
+    git(true);
+
+    await deployProyecto({ ...baseParams, tipo: "dockerfile" });
+
+    expect(escritos(ignorePropio)).toBeUndefined();
   });
 });

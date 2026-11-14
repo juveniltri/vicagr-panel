@@ -44,6 +44,12 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
   (subidas, temas, plugins), esos ficheros se perdían en el siguiente deploy. Ahora se copian al
   volumen antes de recrear el contenedor, con su propietario y permisos; si la copia falla, el deploy
   se detiene sin tocar nada.
+- **Volumen creado antes del primer deploy**: el deploy fallaba al clonar el repositorio porque la
+  carpeta ya no estaba vacía.
+- **Los volúmenes ya no entran en la imagen** al construir los Proyectos de tipo Node.js y
+  Dockerfile.
+- **Cambiar el repositorio de un Proyecto** ya tiene efecto en el siguiente deploy; antes seguía
+  usando el anterior.
 - **Volúmenes → aviso**: al crear uno se indica que no se monta hasta el próximo deploy (Reiniciar no
   basta) y queda marcado «Pendiente de deploy». En los Proyectos de tipo compose se explica que los
   volúmenes se declaran en su `docker-compose.yml`.

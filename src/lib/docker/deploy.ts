@@ -52,9 +52,23 @@ export async function ensureRepo(
       opts,
     );
     onLog?.("→ Repositorio ya clonado, actualizando...");
+    // The Proyecto's repository may have been changed since the last deploy.
+    await execFileAsync(
+      "git",
+      ["-C", repoDir, "remote", "set-url", "origin", repoUrl],
+      opts,
+    );
   } catch {
     onLog?.("→ Clonando repositorio...");
-    await execFileAsync("git", ["clone", repoUrl, repoDir], opts);
+    // Not `git clone`: it refuses a folder that already has files, and the
+    // Proyecto's Volúmenes live in it. The callers fetch and check out next.
+    await mkdir(repoDir, { recursive: true });
+    await execFileAsync("git", ["init", repoDir], opts);
+    await execFileAsync(
+      "git",
+      ["-C", repoDir, "remote", "add", "origin", repoUrl],
+      opts,
+    );
   }
 }
 
@@ -352,6 +366,10 @@ function serializarLimites(limites?: Limites): string[] {
     '      - "no-new-privileges:true"',
   ];
 }
+
+// Marks the <Dockerfile>.dockerignore the Panel writes into a clone, so the
+// next deploy can refresh it and never touches one that belongs to the repo.
+const CABECERA_IGNORE = "# generado por vicagr-panel";
 
 const LOGGING_YAML = [
   "    logging:",
@@ -742,6 +760,27 @@ export async function deployProyecto(params: {
         ? dfPath
         : `${repoDir}/${dfPath}`;
       const composePath = `${panelDir}/${proyectoNombre}.docker-compose.yml`;
+      // The Volúmenes sit inside the build context: without this a `COPY . .`
+      // ships their data in the image. BuildKit reads <Dockerfile>.dockerignore
+      // instead of the context's own, so the repo's rules are carried over.
+      if (volumenes.length > 0) {
+        const ignorePropio = `${dfAbsoluto}.dockerignore`;
+        const actual = await readFile(ignorePropio, "utf-8").catch(() => null);
+        if (actual === null || actual.startsWith(CABECERA_IGNORE)) {
+          const ignoreRepo = await readFile(
+            `${repoDir}/.dockerignore`,
+            "utf-8",
+          ).catch(() => "");
+          await writeFile(
+            ignorePropio,
+            `${CABECERA_IGNORE}\n${ignoreRepo ? `${ignoreRepo.trimEnd()}\n\n` : ""}volumes\n`,
+          );
+        } else {
+          onLog?.(
+            `⚠ El repositorio trae ${dfPath}.dockerignore: añade «volumes» a ese fichero para que los volúmenes no entren en la imagen`,
+          );
+        }
+      }
       await writeFile(
         composePath,
         generarDockerComposeConBuild({
@@ -786,7 +825,7 @@ export async function deployProyecto(params: {
       ).catch(() => "");
       await writeFile(
         `${dfGenerado}.dockerignore`,
-        `${ignoreRepo ? `${ignoreRepo.trimEnd()}\n\n` : ""}.git\n`,
+        `${ignoreRepo ? `${ignoreRepo.trimEnd()}\n\n` : ""}.git\nvolumes\n`,
       );
       await writeFile(
         composePath,
