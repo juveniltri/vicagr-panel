@@ -5,7 +5,7 @@ Novedades. Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES
 cada versión con su fecha, un resumen de una línea y los apartados Novedades,
 Correcciones y Seguridad.
 
-## [3.1.0] - 2026-11-14
+## [3.1.0] - 2026-11-15
 
 Avisos cuando un Proyecto se cae y correcciones de la auditoría de noviembre: variables con
 caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y sesión.
