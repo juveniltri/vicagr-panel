@@ -9,7 +9,7 @@ export async function loginAction(email: string, password: string) {
     await signIn("credentials", { email, password, redirectTo: "/" });
   } catch (error) {
     if (error instanceof DemasiadosIntentos) {
-      return { error: "Demasiados intentos. Espera un minuto." };
+      return { error: "Demasiados intentos. Inténtalo más tarde." };
     }
     if (error instanceof AuthError) {
       return { error: "Credenciales incorrectas" };

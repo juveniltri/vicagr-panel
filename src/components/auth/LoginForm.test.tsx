@@ -190,3 +190,69 @@ describe("LoginForm — Pocket ID", () => {
     );
   });
 });
+
+// With SameSite=Strict the browser withholds the session cookie on a
+// navigation that starts on another site (Pocket ID's redirect, a link in an
+// email), so a logged-in user lands here and must be sent on.
+describe("LoginForm — sesión ya iniciada", () => {
+  const replace = vi.fn();
+  const conSesion = (sesion: unknown, search = "") => {
+    replace.mockClear();
+    vi.stubGlobal("location", {
+      replace,
+      search,
+      origin: "https://panel.test",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => sesion }),
+    );
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("entra sin pedir credenciales", async () => {
+    conSesion({ user: { email: "admin@vicagr.local" } });
+    render(<LoginForm />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
+    expect(fetch).toHaveBeenCalledWith("/api/auth/session");
+  });
+
+  it("vuelve a la página que se pidió", async () => {
+    conSesion(
+      { user: {} },
+      `?callbackUrl=${encodeURIComponent("https://panel.test/proyectos/p1?tab=logs")}`,
+    );
+    render(<LoginForm />);
+
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith("/proyectos/p1?tab=logs"),
+    );
+  });
+
+  it("no redirige a otro sitio aunque lo pida la URL", async () => {
+    conSesion(
+      { user: {} },
+      `?callbackUrl=${encodeURIComponent("https://malo.test/x")}`,
+    );
+    render(<LoginForm />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
+  });
+
+  it("sin sesión se queda en el formulario", async () => {
+    conSesion(null);
+    render(<LoginForm />);
+
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("tras un error de Pocket ID no reintenta entrar", () => {
+    conSesion({ user: {} });
+    render(<LoginForm oidcActivo errorOidc="oidc" />);
+
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});

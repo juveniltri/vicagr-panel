@@ -1,7 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { loginAction, loginOidcAction } from "@/app/(auth)/login/actions";
+
+// Only a path on this origin: the parameter comes from the URL.
+function destinoTrasEntrar(search: string, origin: string): string {
+  const pedido = new URLSearchParams(search).get("callbackUrl");
+  if (!pedido) return "/";
+  try {
+    const url = new URL(pedido, origin);
+    if (url.origin !== origin || url.pathname.startsWith("/login")) return "/";
+    return url.pathname + url.search;
+  } catch {
+    return "/";
+  }
+}
 
 export function LoginForm({
   oidcActivo = false,
@@ -15,6 +28,28 @@ export function LoginForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [redirigiendo, setRedirigiendo] = useState(false);
+
+  // The session cookie is SameSite=Strict, so the browser withholds it on a
+  // navigation that starts on another site (Pocket ID's redirect back, a link
+  // in an email) and a logged-in user lands here. A same-origin fetch does
+  // carry it.
+  useEffect(() => {
+    if (errorOidc) return;
+    let vigente = true;
+    fetch("/api/auth/session")
+      .then((res) => res.json())
+      .then((sesion: unknown) => {
+        if (!vigente || !sesion || typeof sesion !== "object") return;
+        if (!("user" in sesion)) return;
+        window.location.replace(
+          destinoTrasEntrar(window.location.search, window.location.origin),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      vigente = false;
+    };
+  }, [errorOidc]);
 
   async function entrarConPocketId() {
     setRedirigiendo(true);

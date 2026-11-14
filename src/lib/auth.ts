@@ -21,6 +21,9 @@ export class DemasiadosIntentos extends CredentialsSignin {
 // Both the login page (server action) and /api/auth/callback go through
 // authorize(), so the brute-force limit lives here and not in the proxy.
 const limitarLogin = crearLimitador({ max: 10, ventanaMs: 60_000 });
+// Per account as well: guesses spread over many IPs never hit the IP limit.
+// Counted whether or not the email exists, so it reveals nothing.
+const limitarCuenta = crearLimitador({ max: 10, ventanaMs: 15 * 60_000 });
 
 // Traefik sets X-Real-Ip and does not trust a client-sent X-Forwarded-For.
 function ipCliente(request: Request): string {
@@ -53,6 +56,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (limitarLogin(ipCliente(request))) throw new DemasiadosIntentos();
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) return null;
+        if (limitarCuenta(parsed.data.email.toLowerCase()))
+          throw new DemasiadosIntentos();
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email },
         });
