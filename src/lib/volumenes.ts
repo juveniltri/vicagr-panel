@@ -1,6 +1,10 @@
 import { lstat } from "node:fs/promises";
 import path from "node:path";
 
+// Per uploaded file. Bigger things (a database dump, a media library) go in
+// over SFTP: the browser is not the tool for them.
+export const MAX_SUBIDA_BYTES = 2 * 1024 ** 3;
+
 export function rutaHostVolumen(
   reposDir: string,
   clienteSlug: string,
