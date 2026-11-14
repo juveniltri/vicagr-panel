@@ -771,6 +771,16 @@ describe("deployProyecto — composeContent (compose editor)", () => {
     expect(gitCalls).toHaveLength(0);
   });
 
+  // Forcing it restarted every Servicio on every push, the Proyecto's database
+  // included. Compose already recreates the ones whose image or config changed.
+  it("no fuerza recrear los Servicios que no han cambiado", async () => {
+    await deployProyecto(baseParams);
+
+    const spawnArgs = mockSpawn.mock.calls.at(-1)?.[1] as string[];
+    expect(spawnArgs).toEqual(expect.arrayContaining(["up", "--build", "-d"]));
+    expect(spawnArgs).not.toContain("--force-recreate");
+  });
+
   it("sigue usando repoDir/docker-compose.yml cuando no hay composeContent", async () => {
     await deployProyecto(baseParams);
 

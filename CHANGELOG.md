@@ -30,6 +30,10 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
 - **Límites de recursos**: los Proyectos de tipo Dockerfile, Node.js e imagen arrancan con un máximo
   de 1 GB de memoria y 1 CPU, para que uno desbocado no deje sin recursos a los demás. Se cambian en
   Ajustes → Editar. Los de tipo compose ponen los suyos en su `docker-compose.yml`.
+- **Deploys sin corte innecesario**: un deploy ya no reinicia todos los Servicios, solo los que han
+  cambiado. La base de datos de un Proyecto sigue en marcha cuando solo cambia la aplicación.
+- **Eliminar un Proyecto** borra también sus contenedores y los ficheros con sus variables. Sus datos
+  (carpeta y volúmenes) solo se borran marcando «Borrar también sus datos de la VPS».
 - **Reinicio automático**: los Proyectos de tipo Dockerfile, Node.js e imagen vuelven a arrancar solos
   tras una caída o un reinicio de la VPS.
 
@@ -97,6 +101,9 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
   automático. **Antes, revisa sus límites** en Ajustes → Editar: con ese deploy empiezan a aplicarse
   1 GB de memoria y 1 CPU, y un contenedor que necesite más memoria será reiniciado por Docker.
 - La migración de la base de datos se aplica sola al arrancar.
+- Un deploy ya no reinicia los Servicios que no cambian. Si tu repositorio monta ficheros de
+  configuración en un Servicio (un `nginx.conf`, por ejemplo) y solo cambian esos ficheros, pulsa
+  Reiniciar en ese Servicio después del deploy.
 - Un Servicio que sale con error (código distinto de 0) aparece ahora como «error». Si tienes alguno
   que termina así a propósito, haz que salga con 0.
 

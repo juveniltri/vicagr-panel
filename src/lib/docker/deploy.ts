@@ -901,8 +901,9 @@ export async function deployProyecto(params: {
       ...envFileArgs,
       "up",
       "--build",
+      // No --force-recreate: Compose recreates the Servicios whose image or
+      // config changed and leaves the rest (the database) running.
       "-d",
-      "--force-recreate",
     ];
 
     let output = "";
