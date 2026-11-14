@@ -221,7 +221,8 @@ function generarDockerfileNodejs(
       "ENV NODE_ENV=production",
       "COPY --from=builder /app .",
       `EXPOSE ${puerto}`,
-      `CMD ["sh", "-c", "${startCmd}"]`,
+      // The exec form is JSON: quotes in the command must be escaped.
+      `CMD ["sh", "-c", ${JSON.stringify(startCmd)}]`,
     ].join("\n");
   }
 
@@ -233,7 +234,7 @@ function generarDockerfileNodejs(
     "RUN npm ci",
     `RUN ${buildCmd}`,
     `EXPOSE ${puerto}`,
-    `CMD ["sh", "-c", "${startCmd}"]`,
+    `CMD ["sh", "-c", ${JSON.stringify(startCmd)}]`,
   ].join("\n");
 }
 

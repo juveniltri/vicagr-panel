@@ -1021,6 +1021,26 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
   const ignoreGenerado =
     "/var/vicagr/repos/acme/.panel/web-app.Dockerfile.dockerignore";
 
+  it("nodejs: un comando de arranque con comillas no rompe el Dockerfile generado", async () => {
+    await deployProyecto({
+      ...nodejs,
+      startCommand: "node -e \"require('./server')\" --dir C:\\app",
+    });
+
+    const [dockerfile] = writesTo(
+      "/var/vicagr/repos/acme/.panel/web-app.Dockerfile",
+    );
+    const cmd = (dockerfile?.[1] as string)
+      .split("\n")
+      .find((l) => l.startsWith("CMD "))!;
+    // The exec form is JSON: it must parse back to the command as typed.
+    expect(JSON.parse(cmd.slice("CMD ".length))).toEqual([
+      "sh",
+      "-c",
+      "node -e \"require('./server')\" --dir C:\\app",
+    ]);
+  });
+
   it("nodejs: la imagen no incluye el .git del repositorio", async () => {
     await deployProyecto(nodejs);
 
