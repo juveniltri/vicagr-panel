@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { env } from "@/env";
 import { logger } from "@/lib/logger";
 import {
+  apuntarEnvFile,
   encontrarServicioPorPuerto,
   generarOverrideLogging,
   LIMITE_LOGS,
@@ -23,8 +24,11 @@ function substituirVarsEnCompose(
   content: string,
   vars: Array<{ clave: string; valor: string }>,
 ): string {
+  // Compose still interpolates the result, so a $ in the value becomes $$.
+  // Replacer functions: a string replacement would expand $& and $$ itself.
   return vars.reduce(
-    (acc, { clave, valor }) => acc.replaceAll(`\${${clave}}`, valor),
+    (acc, { clave, valor }) =>
+      acc.replaceAll(`\${${clave}}`, () => valor.replaceAll("$", () => "$$")),
     content,
   );
 }
@@ -208,10 +212,32 @@ function generarDockerfileNodejs(
   ].join("\n");
 }
 
+const SIN_COMILLAS = /^[A-Za-z0-9_./:@%+,=-]*$/;
+
+// Unquoted, Compose expands $ and cuts the value at " #". Double quotes with
+// \\ \" \$ is the only form that round-trips every value (checked against
+// Compose v5: single quotes break on a trailing backslash).
+function valorEnvCompose(valor: string): string {
+  if (SIN_COMILLAS.test(valor)) return valor;
+  return `"${valor.replace(/[\\"$]/g, "\\$&")}"`;
+}
+
+// .env.local is read by the app's own dotenv (Next, Vite), which cannot escape
+// a quote and expands $: wrap in a quote the value does not use and escape $
+// (checked against @next/env). A value with ', ` and " has no faithful form.
+function valorEnvApp(valor: string): string {
+  if (SIN_COMILLAS.test(valor)) return valor;
+  const comilla = ["'", "`", '"'].find((c) => !valor.includes(c)) ?? "";
+  return `${comilla}${valor.replaceAll("$", () => "\\$")}${comilla}`;
+}
+
 function serializarEnvFile(
   variables: Array<{ clave: string; valor: string }>,
+  formato: (valor: string) => string = valorEnvCompose,
 ): string {
-  return variables.map(({ clave, valor }) => `${clave}=${valor}`).join("\n");
+  return variables
+    .map(({ clave, valor }) => `${clave}=${formato(valor)}`)
+    .join("\n");
 }
 
 function serializarMapaYaml(
@@ -224,7 +250,8 @@ function serializarMapaYaml(
     cabecera,
     ...variables.map(
       ({ clave, valor }) =>
-        `${indent}${clave}: "${valor.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
+        // $$ so Compose does not interpolate the value
+        `${indent}${clave}: "${valor.replace(/[\\"]/g, "\\$&").replaceAll("$", () => "$$")}"`,
     ),
   ];
 }
@@ -483,9 +510,9 @@ export async function deployProyecto(params: {
         // Pre-substitute ${VAR} so network/volume map keys are resolved — docker compose
         // does not interpolate variables in YAML map keys, only in values.
         const composePath = `${panelDir}/${proyectoNombre}.docker-compose.yml`;
-        const processedContent = substituirVarsEnCompose(
-          composeContent,
-          runtimeVars,
+        const processedContent = apuntarEnvFile(
+          substituirVarsEnCompose(composeContent, runtimeVars),
+          `${proyectoNombre}.env`,
         );
         await writeFile(composePath, processedContent, { encoding: "utf-8" });
         composeFile = composePath;
@@ -496,12 +523,9 @@ export async function deployProyecto(params: {
           encoding: "utf-8",
           mode: 0o600,
         });
-        // Also write as plain .env so `env_file: .env` in service definitions resolves
-        // correctly relative to the compose file's directory (panelDir).
-        await writeFile(`${panelDir}/.env`, envContent, {
-          encoding: "utf-8",
-          mode: 0o600,
-        });
+        // Left by versions before 3.0.1, which shared it between the Cliente's
+        // Proyectos. TODO: drop this cleanup once every VPS has redeployed.
+        await unlink(`${panelDir}/.env`).catch(() => {});
       } else {
         composeFile = `${repoDir}/docker-compose.yml`;
         // Always write .env next to the compose file — docker compose auto-loads it for
@@ -543,7 +567,8 @@ export async function deployProyecto(params: {
         // Write to .env.local in the repo so COPY . . picks it up during build.
         // The multi-stage Dockerfile deletes it before the runner stage copies,
         // so the deployed image stays clean.
-        await writeFile(`${repoDir}/.env.local`, serializarEnvFile(buildVars), {
+        const envLocal = serializarEnvFile(buildVars, valorEnvApp);
+        await writeFile(`${repoDir}/.env.local`, envLocal, {
           encoding: "utf-8",
           mode: 0o600,
         });
@@ -611,8 +636,10 @@ export async function deployProyecto(params: {
       overrideArgs.push("-f", overridePath);
     }
 
+    // Always, even when empty: without it Compose would interpolate with
+    // whatever .env sits in the shared .panel/ directory.
     const envFileArgs =
-      tipo === "compose" && composeContent && runtimeVars.length > 0
+      tipo === "compose" && composeContent
         ? ["--env-file", `${panelDir}/${proyectoNombre}.env`]
         : [];
 

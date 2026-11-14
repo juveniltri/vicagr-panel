@@ -1,10 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import {
+  apuntarEnvFile,
   encontrarServicioPorPuerto,
   extraerServicios,
   generarOverrideLogging,
 } from "./index";
+
+describe("apuntarEnvFile", () => {
+  it("cambia también la forma larga con path", () => {
+    const content =
+      "services:\n  web:\n    env_file:\n      - path: .env\n        required: false\n";
+    expect(parse(apuntarEnvFile(content, "web.env"))).toEqual({
+      services: { web: { env_file: [{ path: "web.env", required: false }] } },
+    });
+  });
+
+  it("deja intacto un compose sin env_file: .env", () => {
+    const content =
+      "services:\n  web:\n    image:   nginx # comentario\n    env_file: otro.env\n    command: cat .env\n";
+    expect(apuntarEnvFile(content, "web.env")).toBe(content);
+  });
+
+  it("deja intacto un compose inválido", () => {
+    const content = "services:\n  web: [\n    env_file: .env\n";
+    expect(apuntarEnvFile(content, "web.env")).toBe(content);
+  });
+});
 
 describe("extraerServicios", () => {
   it("extrae nombres de servicios de un compose válido", () => {

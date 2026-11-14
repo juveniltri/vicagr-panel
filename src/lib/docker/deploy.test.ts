@@ -383,18 +383,25 @@ describe("deployProyecto con variables de entorno", () => {
     );
   });
 
-  it("escribe valores sin escapar en el .env del repoDir (docker compose parsea .env natively)", async () => {
+  // Compose expands $ and cuts at " #" in an unquoted .env value; double quotes
+  // with \\ \" \$ is the form that round-trips (checked against Compose v5).
+  it("entrecomilla y escapa en el .env los valores que Compose alteraría", async () => {
     await deployProyecto({
       ...baseParams,
       variables: [
-        { clave: "PASSWORD", valor: 'p@ss#word"with"quotes' },
+        { clave: "SALT", valor: "|Rk}+w$1 #x 'a' \"b\" ${HOME}" },
         { clave: "PATH_VAR", valor: "C:\\Users\\name" },
+        { clave: "URL", valor: "postgres://u:p@db:5432/app?x=1" },
       ],
     });
 
     expect(mockWriteFile).toHaveBeenCalledWith(
       "/var/vicagr/repos/acme/web-app/.env",
-      'PASSWORD=p@ss#word"with"quotes\nPATH_VAR=C:\\Users\\name',
+      [
+        'SALT="|Rk}+w\\$1 #x \'a\' \\"b\\" \\${HOME}"',
+        'PATH_VAR="C:\\\\Users\\\\name"',
+        'URL="postgres://u:p@db:5432/app?x=1"',
+      ].join("\n"),
       { encoding: "utf-8", mode: 0o600 },
     );
   });
@@ -663,6 +670,48 @@ describe("deployProyecto — composeContent (compose editor)", () => {
     );
   });
 
+  // .panel/ is shared by every Proyecto of the Cliente: a common .env there
+  // handed one Proyecto's secrets to the next one deployed.
+  it("compose pegado: no escribe un .env común del Cliente y borra el antiguo", async () => {
+    await deployProyecto({
+      ...baseParams,
+      composeContent: composeYaml,
+      variables: [{ clave: "SECRET", valor: "abc123" }],
+    });
+
+    const comun = "/var/vicagr/repos/acme/.panel/.env";
+    expect(
+      vi.mocked(mockWriteFile).mock.calls.filter(([p]) => p === comun),
+    ).toHaveLength(0);
+    expect(mockUnlink).toHaveBeenCalledWith(comun);
+  });
+
+  it("compose pegado: env_file: .env apunta al fichero del propio Proyecto", async () => {
+    await deployProyecto({
+      ...baseParams,
+      composeContent:
+        "services:\n  web:\n    image: nginx\n    env_file: .env\n  api:\n    image: node\n    env_file:\n      - ./.env\n      - otro.env\n",
+    });
+
+    const [, contenido] = vi
+      .mocked(mockWriteFile)
+      .mock.calls.find(
+        ([p]) =>
+          p === "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+      )!;
+    expect(contenido).toContain("env_file: web-app.env");
+    expect(contenido).toContain("- web-app.env\n      - otro.env");
+  });
+
+  it("compose pegado: pasa siempre su --env-file para no interpolar con el .env de otro Proyecto", async () => {
+    await deployProyecto({ ...baseParams, composeContent: composeYaml });
+
+    const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+    expect(spawnArgs[spawnArgs.indexOf("--env-file") + 1]).toBe(
+      "/var/vicagr/repos/acme/.panel/web-app.env",
+    );
+  });
+
   it("no necesita repoUrl para desplegar cuando hay composeContent", async () => {
     await expect(
       deployProyecto({
@@ -881,6 +930,55 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
     // Node 20 is out of support (no security patches) since April 2026.
     expect(dockerfile?.[1]).not.toContain("node:20");
     expect(mockUnlink).toHaveBeenCalledWith(envLocal);
+  });
+
+  // The app's dotenv (Next, Vite) can't escape a quote and expands $: wrap in
+  // a quote the value doesn't use and escape $ (checked against @next/env).
+  it("nodejs: los valores con $, # o comillas llegan intactos al .env.local", async () => {
+    await deployProyecto({
+      ...nodejs,
+      variablesBuildTime: [
+        { clave: "A", valor: 'pa$$ #x "dq"' },
+        { clave: "B", valor: 'it\'s "q" $5' },
+      ],
+    });
+
+    expect(writesTo(envLocal)[0]?.[1]).toBe(
+      [
+        "A='pa\\$\\$ #x \"dq\"'",
+        'B=`it\'s "q" \\$5`',
+        "GIT_SHA_SHORT=e881352",
+      ].join("\n"),
+    );
+  });
+
+  it("los composes generados escapan $ para que Compose no lo interpole", async () => {
+    await deployProyecto({
+      ...baseParams,
+      tipo: "dockerfile",
+      variables: [{ clave: "SALT", valor: 'a$b${C} "q" \\d' }],
+      variablesBuildTime: [{ clave: "KEY", valor: "x$y" }],
+    });
+
+    const [compose] = writesTo(
+      "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+    );
+    expect(compose?.[1]).toContain('        KEY: "x$$y"');
+    expect(compose?.[1]).toContain('      SALT: "a$$b$${C} \\"q\\" \\\\d"');
+  });
+
+  it("compose pegado: un valor con $ sustituido en el YAML no se vuelve a interpolar", async () => {
+    await deployProyecto({
+      ...baseParams,
+      composeContent:
+        "services:\n  web:\n    image: nginx\n    command: ${CMD}\n",
+      variables: [{ clave: "CMD", valor: "echo $HOME $& $$" }],
+    });
+
+    const [compose] = writesTo(
+      "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+    );
+    expect(compose?.[1]).toContain("command: echo $$HOME $$& $$$$\n");
   });
 
   const ignoreGenerado =

@@ -1,4 +1,28 @@
-import { parse, stringify } from "yaml";
+import { isNode, isScalar, parse, parseDocument, stringify, visit } from "yaml";
+
+// A pasted compose lives in the Cliente's shared .panel/ directory, so its
+// `env_file: .env` has to point at the Proyecto's own file instead.
+export function apuntarEnvFile(content: string, fichero: string): string {
+  const doc = parseDocument(content);
+  // An invalid compose fails in `docker compose` with its own error.
+  if (doc.errors.length) return content;
+  let cambiado = false;
+  visit(doc, {
+    Pair(_, pair) {
+      if (!isScalar(pair.key) || pair.key.value !== "env_file") return;
+      if (!isNode(pair.value)) return;
+      visit(pair.value, {
+        Scalar(_, nodo) {
+          if (nodo.value !== ".env" && nodo.value !== "./.env") return;
+          nodo.value = fichero;
+          cambiado = true;
+        },
+      });
+    },
+  });
+  // Untouched when there is nothing to change, to keep the user's formatting.
+  return cambiado ? doc.toString() : content;
+}
 
 export function extraerServicios(content: string): string[] {
   if (!content.trim()) return [];
