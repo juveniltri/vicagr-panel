@@ -340,6 +340,19 @@ async function esperarContenedoresSanos(
   }
 }
 
+type Limites = { memoriaMb: number; cpus: number };
+
+// One runaway container must not starve every other Cliente on the VPS.
+function serializarLimites(limites?: Limites): string[] {
+  if (!limites) return [];
+  return [
+    `    mem_limit: "${limites.memoriaMb}m"`,
+    `    cpus: "${limites.cpus}"`,
+    "    security_opt:",
+    '      - "no-new-privileges:true"',
+  ];
+}
+
 const LOGGING_YAML = [
   "    logging:",
   `      driver: ${LIMITE_LOGS.driver}`,
@@ -356,6 +369,7 @@ function generarDockerComposeConBuild(params: {
   buildArgs?: Array<{ clave: string; valor: string }>;
   variables?: Array<{ clave: string; valor: string }>;
   volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
+  limites?: Limites;
 }): string {
   return [
     "services:",
@@ -371,6 +385,7 @@ function generarDockerComposeConBuild(params: {
     ...serializarVolumes(params.volumenes ?? []),
     // Without a policy Docker leaves it down after a crash or a VPS reboot.
     "    restart: unless-stopped",
+    ...serializarLimites(params.limites),
     ...LOGGING_YAML,
   ].join("\n");
 }
@@ -380,6 +395,7 @@ function generarDockerComposeConImage(params: {
   puerto: number;
   variables?: Array<{ clave: string; valor: string }>;
   volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
+  limites?: Limites;
 }): string {
   return [
     "services:",
@@ -392,6 +408,7 @@ function generarDockerComposeConImage(params: {
     ...serializarVolumes(params.volumenes ?? []),
     // Without a policy Docker leaves it down after a crash or a VPS reboot.
     "    restart: unless-stopped",
+    ...serializarLimites(params.limites),
     ...LOGGING_YAML,
   ].join("\n");
 }
@@ -586,6 +603,7 @@ export async function deployProyecto(params: {
   startCommand?: string | null;
   puerto?: number | null;
   volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
+  limites?: Limites;
   // Compose Servicios that routes point at; each gets "<servicio>.<proyecto>".
   serviciosConRuta?: string[];
   onLog?: (line: string) => void;
@@ -733,6 +751,7 @@ export async function deployProyecto(params: {
           buildArgs: buildVars,
           variables: runtimeVars,
           volumenes,
+          limites: params.limites,
         }),
       );
       composeFile = composePath;
@@ -777,6 +796,7 @@ export async function deployProyecto(params: {
           puerto,
           variables: runtimeVars,
           volumenes,
+          limites: params.limites,
         }),
       );
       composeFile = composePath;
@@ -790,6 +810,7 @@ export async function deployProyecto(params: {
           puerto,
           variables: runtimeVars,
           volumenes,
+          limites: params.limites,
         }),
       );
       composeFile = composePath;

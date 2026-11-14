@@ -3165,3 +3165,84 @@ describe("proyectos — Proyecto restaurando", () => {
     expect(ejecutarDeploy).not.toHaveBeenCalled();
   });
 });
+
+describe("proyectos — límites de recursos", () => {
+  const conLimites = {
+    ...mockProyecto,
+    estado: "stopped" as const,
+    tipo: "image" as const,
+    imagenUrl: "nginx:1.27",
+    limiteMemoriaMb: 512,
+    limiteCpus: 0.5,
+    rutas: [],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(estaRestaurando).mockReturnValue(false);
+    // Reset, not clear: earlier tests leave one-off answers queued.
+    vi.mocked(prisma.proyecto.findUnique).mockReset();
+    vi.mocked(prisma.proyecto.update).mockReset();
+    vi.mocked(ejecutarDeploy).mockReset();
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "exito",
+      output: "",
+    });
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      conLimites as never,
+    );
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...conLimites,
+      cliente: mockClienteRow,
+    } as never);
+  });
+
+  it("editar guarda los límites", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.editar({
+      id: "p1",
+      nombre: conLimites.nombre,
+      limiteMemoriaMb: 2048,
+      limiteCpus: 2,
+    });
+
+    expect(
+      vi.mocked(prisma.proyecto.update).mock.calls[0][0].data,
+    ).toMatchObject({ limiteMemoriaMb: 2048, limiteCpus: 2 });
+  });
+
+  it.each([
+    { limiteMemoriaMb: 16 },
+    { limiteCpus: 0 },
+    { limiteMemoriaMb: 512.5 },
+  ])("editar rechaza %o", async (limites) => {
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.editar({
+        id: "p1",
+        nombre: conLimites.nombre,
+        ...limites,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("obtener los devuelve para el formulario", async () => {
+    const ctx = await createContext();
+    const proyecto = await createCaller(ctx).proyectos.obtener({ id: "p1" });
+
+    expect(proyecto).toMatchObject({ limiteMemoriaMb: 512, limiteCpus: 0.5 });
+  });
+
+  it("el deploy los pasa al compose generado", async () => {
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.volumen.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.configuracionDeploy.findUnique).mockResolvedValue(null);
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.deploy({ id: "p1" });
+
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
+      expect.objectContaining({ limites: { memoriaMb: 512, cpus: 0.5 } }),
+    );
+  });
+});

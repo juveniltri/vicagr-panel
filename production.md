@@ -298,6 +298,10 @@ Comprueba después de actualizar:
      caduca.
 - **Alerta de disco**: al llegar al 85 % de ocupación llega «Disco casi lleno» por los canales de
   notificación, y «Disco recuperado» al bajar del 80 %.
+- **Límites de recursos**: cada Proyecto de tipo Dockerfile, Node.js o imagen queda con 1 GB de memoria
+  y 1 CPU al redesplegar. Mira antes cuánto usa hoy cada uno (`docker stats --no-stream`) y sube el
+  límite en Ajustes → Editar a los que lo necesiten (una base de datos, un WordPress con mucho
+  tráfico).
 - **Reinicio automático**: redespliega los Proyectos de tipo Dockerfile, Node.js e imagen; hasta
   entonces no vuelven a arrancar solos tras reiniciar la VPS.
 - **Volúmenes**: un volumen vacío se rellena en el siguiente deploy con lo que el contenedor tenía en

@@ -1407,3 +1407,56 @@ describe("deployProyecto — espera a que los contenedores estén sanos", () => 
     },
   );
 });
+
+// One runaway container must not starve every other Cliente on the VPS.
+describe("deployProyecto — límites de recursos", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue("");
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => cb(null, "", ""),
+    );
+  });
+
+  const composeGenerado = () =>
+    mockWriteFile.mock.calls.find(
+      ([ruta]) =>
+        ruta === "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+    )?.[1] as string | undefined;
+
+  it.each(["dockerfile", "nodejs", "image"])(
+    "%s: el compose generado limita memoria y CPU y no deja ganar privilegios",
+    async (tipo) => {
+      await deployProyecto({
+        ...baseParams,
+        tipo,
+        imagenUrl: "nginx:1.27",
+        limites: { memoriaMb: 512, cpus: 0.5 },
+      });
+
+      expect(composeGenerado()).toContain(
+        [
+          '    mem_limit: "512m"',
+          '    cpus: "0.5"',
+          "    security_opt:",
+          '      - "no-new-privileges:true"',
+        ].join("\n"),
+      );
+    },
+  );
+
+  it("sin límites no los escribe", async () => {
+    await deployProyecto({ ...baseParams, tipo: "image", imagenUrl: "nginx" });
+
+    expect(composeGenerado()).not.toContain("mem_limit");
+  });
+});

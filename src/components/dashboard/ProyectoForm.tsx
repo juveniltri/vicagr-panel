@@ -33,6 +33,10 @@ type ProyectoEditable = {
   dockerfilePath?: string | null;
   buildCommand?: string | null;
   startCommand?: string | null;
+  // Only known from the Proyecto's own page; without them the form leaves
+  // the limits as they are.
+  limiteMemoriaMb?: number;
+  limiteCpus?: number;
 };
 
 type ModalProps = {
@@ -68,8 +72,15 @@ export function ProyectoFormModal({
   const [puerto, setPuerto] = useState(
     proyecto?.puerto != null ? String(proyecto.puerto) : "",
   );
+  const [memoriaMb, setMemoriaMb] = useState(
+    String(proyecto?.limiteMemoriaMb ?? ""),
+  );
+  const [cpus, setCpus] = useState(String(proyecto?.limiteCpus ?? ""));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The Panel only limits the composes it generates.
+  const mostrarLimites =
+    proyecto?.limiteMemoriaMb != null && tipo !== "compose";
 
   const usaRepo = USA_REPO.includes(tipo);
   const repoOpcional = REPO_OPCIONAL.includes(tipo);
@@ -105,6 +116,12 @@ export function ProyectoFormModal({
           dockerfilePathFinal,
           buildCommandFinal,
           startCommandFinal,
+          mostrarLimites && memoriaMb.trim() && cpus.trim()
+            ? {
+                limiteMemoriaMb: parseInt(memoriaMb, 10),
+                limiteCpus: parseFloat(cpus),
+              }
+            : undefined,
         )
       : await crearProyectoAction(
           clienteId!,
@@ -326,6 +343,46 @@ export function ProyectoFormModal({
               className="font-body text-sm w-full bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-primary-300"
             />
           </div>
+
+          {mostrarLimites && (
+            <div className="flex gap-3">
+              <div className="flex flex-1 flex-col gap-1">
+                <label
+                  htmlFor="limite-memoria"
+                  className="font-body text-xs text-text-muted"
+                >
+                  Memoria máxima (MB)
+                </label>
+                <input
+                  id="limite-memoria"
+                  type="number"
+                  min={64}
+                  required
+                  value={memoriaMb}
+                  onChange={(e) => setMemoriaMb(e.target.value)}
+                  className="font-body text-sm w-full bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary focus:outline-none focus:border-primary-300"
+                />
+              </div>
+              <div className="flex flex-1 flex-col gap-1">
+                <label
+                  htmlFor="limite-cpus"
+                  className="font-body text-xs text-text-muted"
+                >
+                  CPUs máximas
+                </label>
+                <input
+                  id="limite-cpus"
+                  type="number"
+                  min={0.1}
+                  step={0.1}
+                  required
+                  value={cpus}
+                  onChange={(e) => setCpus(e.target.value)}
+                  className="font-body text-sm w-full bg-transparent border border-border rounded-[var(--radius-sm)] px-3 py-2 text-text-primary focus:outline-none focus:border-primary-300"
+                />
+              </div>
+            </div>
+          )}
 
           {error && (
             <p role="alert" className="font-body text-xs text-state-error">

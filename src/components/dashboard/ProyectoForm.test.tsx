@@ -249,6 +249,7 @@ describe("ProyectoFormModal — editar proyecto", () => {
         undefined,
         undefined,
         undefined,
+        undefined,
       );
     });
   });
@@ -348,5 +349,61 @@ describe("EliminarProyectoButton", () => {
       expect(screen.getByText(/No se puede eliminar/)).toBeInTheDocument(),
     );
     expect(mockPush).not.toHaveBeenCalled();
+  });
+});
+
+describe("ProyectoFormModal — límites de recursos", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(editarProyectoAction).mockResolvedValue(undefined);
+  });
+
+  const conLimites = {
+    ...mockProyecto,
+    tipo: "image" as const,
+    imagenUrl: "nginx:1.27",
+    limiteMemoriaMb: 1024,
+    limiteCpus: 1,
+  };
+
+  it("al editar un Proyecto de compose generado deja cambiar memoria y CPU", async () => {
+    render(<ProyectoFormModal proyecto={conLimites} onClose={onClose} />);
+
+    fireEvent.change(screen.getByLabelText("Memoria máxima (MB)"), {
+      target: { value: "2048" },
+    });
+    fireEvent.change(screen.getByLabelText("CPUs máximas"), {
+      target: { value: "1.5" },
+    });
+    fireEvent.submit(
+      screen.getByLabelText("Memoria máxima (MB)").closest("form")!,
+    );
+
+    await waitFor(() => expect(editarProyectoAction).toHaveBeenCalled());
+    expect(vi.mocked(editarProyectoAction).mock.calls[0].at(-1)).toEqual({
+      limiteMemoriaMb: 2048,
+      limiteCpus: 1.5,
+    });
+  });
+
+  it("en un Proyecto de tipo compose no se ofrecen: los pone su docker-compose.yml", () => {
+    render(
+      <ProyectoFormModal
+        proyecto={{ ...conLimites, tipo: "compose" }}
+        onClose={onClose}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Memoria máxima (MB)")).toBeNull();
+  });
+
+  it("sin conocer los límites (edición desde el listado) no los toca", async () => {
+    render(<ProyectoFormModal proyecto={mockProyecto} onClose={onClose} />);
+    fireEvent.submit(screen.getByLabelText(/nombre/i).closest("form")!);
+
+    await waitFor(() => expect(editarProyectoAction).toHaveBeenCalled());
+    expect(
+      vi.mocked(editarProyectoAction).mock.calls[0].at(-1),
+    ).toBeUndefined();
   });
 });

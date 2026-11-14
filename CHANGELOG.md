@@ -27,6 +27,9 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
 - **Deploy comprobado**: un deploy solo termina bien si los contenedores siguen en marcha unos
   segundos después y, si tienen healthcheck, están sanos. Si uno muere al arrancar, el deploy falla y
   muestra sus últimas líneas de log.
+- **Límites de recursos**: los Proyectos de tipo Dockerfile, Node.js e imagen arrancan con un máximo
+  de 1 GB de memoria y 1 CPU, para que uno desbocado no deje sin recursos a los demás. Se cambian en
+  Ajustes → Editar. Los de tipo compose ponen los suyos en su `docker-compose.yml`.
 - **Reinicio automático**: los Proyectos de tipo Dockerfile, Node.js e imagen vuelven a arrancar solos
   tras una caída o un reinicio de la VPS.
 
@@ -74,7 +77,9 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
   vinculada en Usuarios y que el acceso de emergencia funciona (`production.md` § D): tras
   actualizar, la contraseña ya no entra por internet.
 - Redespliega los Proyectos de tipo Dockerfile, Node.js e imagen para que reciban el reinicio
-  automático.
+  automático. **Antes, revisa sus límites** en Ajustes → Editar: con ese deploy empiezan a aplicarse
+  1 GB de memoria y 1 CPU, y un contenedor que necesite más memoria será reiniciado por Docker.
+- La migración de la base de datos se aplica sola al arrancar.
 - Un Servicio que sale con error (código distinto de 0) aparece ahora como «error». Si tienes alguno
   que termina así a propósito, haz que salga con 0.
 

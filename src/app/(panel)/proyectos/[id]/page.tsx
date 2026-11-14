@@ -601,6 +601,8 @@ export default async function DetalleProyectoPage({
                   dockerfilePath: proyecto.dockerfilePath,
                   buildCommand: proyecto.buildCommand,
                   startCommand: proyecto.startCommand,
+                  limiteMemoriaMb: proyecto.limiteMemoriaMb,
+                  limiteCpus: proyecto.limiteCpus,
                 }}
               />
             }

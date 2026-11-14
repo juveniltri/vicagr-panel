@@ -125,10 +125,12 @@ export async function editarProyectoAction(
   dockerfilePath?: string,
   buildCommand?: string,
   startCommand?: string,
+  limites?: { limiteMemoriaMb: number; limiteCpus: number },
 ) {
   try {
     const api = await createServerCaller();
     await api.proyectos.editar({
+      ...limites,
       id,
       nombre,
       repositorioUrl,

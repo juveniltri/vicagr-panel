@@ -55,6 +55,8 @@ const proyectoInput = z.object({
   dockerfilePath: z.string().optional(),
   buildCommand: z.string().optional(),
   startCommand: z.string().optional(),
+  limiteMemoriaMb: z.number().int().min(64).max(1_048_576).optional(),
+  limiteCpus: z.number().min(0.1).max(256).optional(),
 });
 
 const idInput = z.object({ id: z.string() });
@@ -178,6 +180,10 @@ export async function lanzarDeploy(
     startCommand: proyecto.startCommand,
     puerto: proyecto.puerto,
     volumenes,
+    limites: {
+      memoriaMb: proyecto.limiteMemoriaMb,
+      cpus: proyecto.limiteCpus,
+    },
     serviciosConRuta: [
       ...new Set(
         proyecto.rutas.flatMap((r) => (r.servicio ? [r.servicio] : [])),
@@ -300,6 +306,8 @@ export const proyectosRouter = router({
       dockerfilePath: proyecto.dockerfilePath,
       buildCommand: proyecto.buildCommand,
       startCommand: proyecto.startCommand,
+      limiteMemoriaMb: proyecto.limiteMemoriaMb,
+      limiteCpus: proyecto.limiteCpus,
       composeContent: proyecto.composeContent ?? null,
       ultimoDeploy:
         proyecto.ultimoDeployEn && proyecto.ultimoDeployRama
@@ -464,6 +472,8 @@ export const proyectosRouter = router({
           dockerfilePath: input.dockerfilePath,
           buildCommand: input.buildCommand,
           startCommand: input.startCommand,
+          limiteMemoriaMb: input.limiteMemoriaMb,
+          limiteCpus: input.limiteCpus,
         },
         include: { cliente: true },
       });
