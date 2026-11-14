@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import type { PayloadNotificacion } from "./index";
-import { asuntoNotificacion } from "./webhook";
+import { asuntoNotificacion, esAvisoDeEstado } from "./webhook";
 
 export async function enviarEmail(
   config: {
@@ -32,8 +32,7 @@ export async function enviarEmail(
     text: [
       `Proyecto: ${payload.proyectoNombre}`,
       `Cliente: ${payload.clienteSlug}`,
-      // A fall has no branch or commit to show.
-      ...(payload.evento === "servicio"
+      ...(esAvisoDeEstado(payload)
         ? [""]
         : [
             `Rama: ${payload.rama}`,

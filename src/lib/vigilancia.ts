@@ -1,8 +1,11 @@
+import { env } from "@/env";
 import { estaRestaurando } from "@/lib/backups/restaurando";
 import { listarServicios } from "@/lib/docker/proyectos";
+import { comprobarSalud } from "@/lib/health";
 import { logger } from "@/lib/logger";
 import { enviarNotificacion } from "@/lib/notificaciones";
 import { prisma } from "@/lib/prisma";
+import { obtenerMetricas } from "@/lib/system/metrics";
 
 const log = logger.child({ module: "vigilancia" });
 
@@ -13,11 +16,58 @@ const LECTURAS_PARA_ERROR = 2;
 const global = globalThis as unknown as {
   vigilancia?: NodeJS.Timeout;
   fallosVigilancia?: Map<string, number>;
+  discoAvisado?: boolean;
 };
 const fallos = (global.fallosVigilancia ??= new Map<string, number>());
 
 export function olvidarFallos(): void {
   fallos.clear();
+  global.discoAvisado = false;
+}
+
+// A full disk takes databases and deploys down with it. The gap between the
+// two thresholds keeps a disk hovering around 85 % from messaging every minute.
+const DISCO_AVISO = 85;
+const DISCO_RECUPERADO = 80;
+
+export function comprobarDisco(): void {
+  let disco;
+  try {
+    ({ disco } = obtenerMetricas());
+  } catch {
+    return;
+  }
+  const porcentaje = (disco.usado / disco.total) * 100;
+  const avisar = (resultado: "exito" | "error") =>
+    void enviarNotificacion({
+      evento: "disco",
+      proyectoNombre: "VPS",
+      clienteSlug: "panel",
+      rama: "—",
+      sha: null,
+      resultado,
+      output: `Disco al ${Math.round(porcentaje)} %: ${disco.usado} de ${disco.total} ${disco.unidad} ocupados.`,
+    });
+  if (!global.discoAvisado && porcentaje >= DISCO_AVISO) {
+    global.discoAvisado = true;
+    avisar("error");
+  } else if (global.discoAvisado && porcentaje < DISCO_RECUPERADO) {
+    global.discoAvisado = false;
+    avisar("exito");
+  }
+}
+
+// The Panel lives on the VPS it watches, so it cannot report its own death:
+// an outside service (healthchecks.io…) expects this call every minute and
+// alerts when it stops. Silent while unhealthy, so that also raises the alert.
+export async function enviarLatido(): Promise<void> {
+  if (!env.LATIDO_URL) return;
+  try {
+    if ((await comprobarSalud()).status !== "ok") return;
+    await fetch(env.LATIDO_URL, { signal: AbortSignal.timeout(10_000) });
+  } catch (err) {
+    log.warn({ err }, "No se pudo enviar el latido");
+  }
 }
 
 // The Estado in the database only changes with actions taken in the Panel.
@@ -106,5 +156,9 @@ export async function reconciliarEstados(): Promise<void> {
 
 export function iniciarVigilancia(): void {
   if (global.vigilancia) return;
-  global.vigilancia = setInterval(() => void reconciliarEstados(), 60_000);
+  global.vigilancia = setInterval(() => {
+    void reconciliarEstados();
+    comprobarDisco();
+    void enviarLatido();
+  }, 60_000);
 }

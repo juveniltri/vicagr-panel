@@ -280,8 +280,19 @@ Comprueba después de actualizar:
   login, entra con contraseña y avisa: el acceso de emergencia de § D sigue funcionando.
 - **Avisos de caída**: con algún canal configurado en Configuración → Notificaciones, para un
   contenedor de prueba con `docker kill <contenedor>` (o deja que falle) y confirma que en unos dos
-  minutos llega «Proyecto caído» y, al volver, «Proyecto recuperado». Si el Panel o la VPS entera
-  caen no hay quien avise: para eso hace falta un vigilante externo (pendiente, issue #93).
+  minutos llega «Proyecto caído» y, al volver, «Proyecto recuperado».
+- **Vigilante externo** (recomendado): si cae el Panel, Traefik o la VPS entera, solo puede avisar
+  alguien de fuera.
+  1. En [healthchecks.io](https://healthchecks.io) crea un check con periodo de 1 minuto y gracia de
+     5, y configura allí a quién avisa (email, Telegram…).
+  2. Añade su URL al `.env` de la VPS: `LATIDO_URL=https://hc-ping.com/<id>` y levanta el stack
+     (`docker compose up -d`). El Panel la llama cada minuto mientras `/api/health` está en verde;
+     si deja de hacerlo, healthchecks.io avisa. Vacía o ausente, no se envía nada.
+  3. Para los dominios de los clientes, añade un monitor HTTP por dominio en un servicio como
+     UptimeRobot o Better Stack: comprueban desde fuera que la web responde y que el certificado no
+     caduca.
+- **Alerta de disco**: al llegar al 85 % de ocupación llega «Disco casi lleno» por los canales de
+  notificación, y «Disco recuperado» al bajar del 80 %.
 - **Reinicio automático**: redespliega los Proyectos de tipo Dockerfile, Node.js e imagen; hasta
   entonces no vuelven a arrancar solos tras reiniciar la VPS.
 - **Volúmenes**: un volumen vacío se rellena en el siguiente deploy con lo que el contenedor tenía en

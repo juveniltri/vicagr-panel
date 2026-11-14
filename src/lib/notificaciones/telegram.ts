@@ -1,5 +1,5 @@
 import type { PayloadNotificacion } from "./index";
-import { asuntoNotificacion } from "./webhook";
+import { asuntoNotificacion, esAvisoDeEstado } from "./webhook";
 
 export async function enviarTelegram(
   botToken: string,
@@ -14,8 +14,7 @@ export async function enviarTelegram(
   ];
   const text = [
     `${emoji} ${asuntoNotificacion(payload)} — ${payload.proyectoNombre}`,
-    // A fall has no branch or commit to show.
-    ...(payload.evento === "servicio"
+    ...(esAvisoDeEstado(payload)
       ? [`Cliente: ${payload.clienteSlug}`, ""]
       : [
           `Rama: ${payload.rama}`,

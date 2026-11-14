@@ -16,6 +16,12 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
   Proyecto pasa a «error» en un par de minutos y llega un aviso «Proyecto caído» por los canales de
   Configuración → Notificaciones; cuando vuelve, «Proyecto recuperado». Detener un Proyecto desde el
   Panel no avisa.
+- **Alerta de disco**: aviso «Disco casi lleno» al llegar al 85 % de ocupación de la VPS y «Disco
+  recuperado» al bajar del 80 %.
+- **Latido para un vigilante externo** (opcional, `LATIDO_URL`): el Panel llama cada minuto a un
+  servicio como healthchecks.io mientras está sano; si la VPS, Traefik o el Panel caen, avisa ese
+  servicio. Pasos en `production.md` § B1b.
+- **Reiniciar** levanta también los Servicios caídos, no solo los que estaban en marcha.
 - **El estado sigue a Docker**: el Panel comprueba cada minuto los contenedores, así que un Proyecto
   ya no aparece «running» con sus contenedores caídos.
 - **Deploy comprobado**: un deploy solo termina bien si los contenedores siguen en marcha unos

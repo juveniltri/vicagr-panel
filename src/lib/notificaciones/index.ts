@@ -9,7 +9,8 @@ const log = logger.child({ module: "notificaciones" });
 
 export interface PayloadNotificacion {
   // "servicio": a Proyecto fell (error) or came back (exito) on its own.
-  evento?: "deploy" | "backup" | "servicio";
+  // "disco": the VPS disk filled up (error) or freed up again (exito).
+  evento?: "deploy" | "backup" | "servicio" | "disco";
   proyectoNombre: string;
   clienteSlug: string;
   rama: string;

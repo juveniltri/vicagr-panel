@@ -283,6 +283,23 @@ describe("enviarWebhook — caída y recuperación de un Proyecto", () => {
     expect(text).not.toContain("Rama:");
   });
 
+  it.each([
+    ["error", "❌ Disco casi lleno — "],
+    ["exito", "✅ Disco recuperado — "],
+  ] as const)(
+    "el aviso de disco con %s se titula «%s»",
+    async (resultado, titulo) => {
+      await enviarWebhook("https://hooks.slack.com/services/T/B/secret", {
+        ...caida,
+        evento: "disco",
+        resultado,
+        output: "Disco al 87 %",
+      });
+      expect(cuerpoEnviado().text).toContain(titulo);
+      expect(cuerpoEnviado().text).not.toContain("Rama:");
+    },
+  );
+
   it("la recuperación se titula «Proyecto recuperado»", async () => {
     await enviarWebhook("https://hooks.slack.com/services/T/B/secret", {
       ...caida,

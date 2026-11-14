@@ -28,7 +28,14 @@ function destinoDe(url: string): Destino {
 }
 
 // "Deploy error", "Backup exito", "Proyecto caído"…, shared by every channel.
+// Falls and disk alerts have no branch or commit to show.
+export function esAvisoDeEstado(p: PayloadNotificacion): boolean {
+  return p.evento === "servicio" || p.evento === "disco";
+}
+
 export function asuntoNotificacion(p: PayloadNotificacion): string {
+  if (p.evento === "disco")
+    return p.resultado === "exito" ? "Disco recuperado" : "Disco casi lleno";
   if (p.evento === "servicio")
     return p.resultado === "exito" ? "Proyecto recuperado" : "Proyecto caído";
   return `${p.evento === "backup" ? "Backup" : "Deploy"} ${p.resultado}`;
@@ -52,10 +59,9 @@ function bloqueLog(output: string): string {
 function cuerpo(destino: Destino, p: PayloadNotificacion): unknown {
   if (destino === "slack") {
     return {
-      text:
-        p.evento === "servicio"
-          ? `${titulo(p)}\n${p.output}`
-          : `${titulo(p)}\nRama: ${p.rama} · Commit: ${p.sha ?? "—"}`,
+      text: esAvisoDeEstado(p)
+        ? `${titulo(p)}\n${p.output}`
+        : `${titulo(p)}\nRama: ${p.rama} · Commit: ${p.sha ?? "—"}`,
     };
   }
   if (destino === "discord") {
@@ -64,8 +70,7 @@ function cuerpo(destino: Destino, p: PayloadNotificacion): unknown {
         {
           title: titulo(p),
           color: COLOR[p.resultado],
-          // A fall has no branch or commit to show.
-          ...(p.evento !== "servicio" && {
+          ...(!esAvisoDeEstado(p) && {
             fields: [
               { name: "Rama", value: p.rama, inline: true },
               { name: "Commit", value: p.sha ?? "—", inline: true },

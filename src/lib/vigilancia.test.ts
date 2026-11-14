@@ -6,12 +6,25 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/docker/proyectos", () => ({ listarServicios: vi.fn() }));
 vi.mock("@/lib/backups/restaurando", () => ({ estaRestaurando: vi.fn() }));
 vi.mock("@/lib/notificaciones", () => ({ enviarNotificacion: vi.fn() }));
+vi.mock("@/lib/system/metrics", () => ({ obtenerMetricas: vi.fn() }));
+vi.mock("@/lib/health", () => ({ comprobarSalud: vi.fn() }));
+const { env } = vi.hoisted(() => ({
+  env: { LATIDO_URL: undefined as string | undefined },
+}));
+vi.mock("@/env", () => ({ env }));
 
 import { estaRestaurando } from "@/lib/backups/restaurando";
 import { listarServicios } from "@/lib/docker/proyectos";
 import { enviarNotificacion } from "@/lib/notificaciones";
 import { prisma } from "@/lib/prisma";
-import { olvidarFallos, reconciliarEstados } from "./vigilancia";
+import { comprobarSalud } from "@/lib/health";
+import { obtenerMetricas } from "@/lib/system/metrics";
+import {
+  comprobarDisco,
+  enviarLatido,
+  olvidarFallos,
+  reconciliarEstados,
+} from "./vigilancia";
 
 type Estado = "running" | "error";
 const proyecto = (
@@ -195,5 +208,107 @@ describe("reconciliarEstados", () => {
     vi.mocked(prisma.proyecto.findMany).mockRejectedValue(new Error("db"));
 
     await expect(reconciliarEstados()).resolves.toBeUndefined();
+  });
+});
+
+describe("comprobarDisco", () => {
+  const disco = (usado: number) =>
+    vi.mocked(obtenerMetricas).mockReturnValue({
+      cpu: 1,
+      ram: { usado: 1, total: 8, unidad: "GB" },
+      disco: { usado, total: 100, unidad: "GB" },
+    });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    olvidarFallos();
+  });
+
+  it("por debajo del 85 % no avisa", () => {
+    disco(84.9);
+    comprobarDisco();
+    expect(enviarNotificacion).not.toHaveBeenCalled();
+  });
+
+  it("al llegar al 85 % avisa una sola vez mientras siga lleno", () => {
+    disco(87);
+    comprobarDisco();
+    comprobarDisco();
+
+    expect(enviarNotificacion).toHaveBeenCalledExactlyOnceWith({
+      evento: "disco",
+      proyectoNombre: "VPS",
+      clienteSlug: "panel",
+      rama: "—",
+      sha: null,
+      resultado: "error",
+      output: "Disco al 87 %: 87 de 100 GB ocupados.",
+    });
+  });
+
+  // Hovering around the threshold must not send a message every minute.
+  it("avisa de la recuperación solo al bajar del 80 %", () => {
+    disco(87);
+    comprobarDisco();
+    disco(82);
+    comprobarDisco();
+    expect(enviarNotificacion).toHaveBeenCalledTimes(1);
+
+    disco(79);
+    comprobarDisco();
+    expect(enviarNotificacion).toHaveBeenLastCalledWith(
+      expect.objectContaining({ evento: "disco", resultado: "exito" }),
+    );
+  });
+
+  it("si no se pueden leer las métricas no avisa ni falla", () => {
+    vi.mocked(obtenerMetricas).mockImplementation(() => {
+      throw new Error("statfs");
+    });
+    expect(() => comprobarDisco()).not.toThrow();
+    expect(enviarNotificacion).not.toHaveBeenCalled();
+  });
+});
+
+// The Panel lives on the VPS it watches: only someone outside can tell that
+// it stopped. The heartbeat is what that someone listens for.
+describe("enviarLatido", () => {
+  const mockFetch = vi.fn();
+  const salud = (status: "ok" | "degraded") =>
+    vi.mocked(comprobarSalud).mockResolvedValue({ status } as never);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal("fetch", mockFetch);
+    mockFetch.mockResolvedValue({ ok: true });
+    env.LATIDO_URL = "https://hc-ping.com/abc";
+  });
+
+  it("sin URL configurada no envía nada", async () => {
+    env.LATIDO_URL = undefined;
+    await enviarLatido();
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(comprobarSalud).not.toHaveBeenCalled();
+  });
+
+  it("con el Panel sano llama a la URL", async () => {
+    salud("ok");
+    await enviarLatido();
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://hc-ping.com/abc",
+      expect.anything(),
+    );
+  });
+
+  it("con la base de datos, Docker o Traefik caídos se calla, para que salte el aviso de fuera", async () => {
+    salud("degraded");
+    await enviarLatido();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("un fallo de red al enviarlo no tumba el vigilante", async () => {
+    salud("ok");
+    mockFetch.mockRejectedValue(new Error("ENOTFOUND"));
+    await expect(enviarLatido()).resolves.toBeUndefined();
   });
 });
