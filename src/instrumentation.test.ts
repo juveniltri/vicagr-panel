@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({
   limpiarAuxiliares: vi.fn(),
   iniciarProgramador: vi.fn(),
+  iniciarVigilancia: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }));
@@ -30,6 +31,9 @@ vi.mock("@/lib/backups/auxiliar", () => ({
 vi.mock("@/lib/backups/programador", () => ({
   iniciarProgramador: m.iniciarProgramador,
 }));
+vi.mock("@/lib/vigilancia", () => ({
+  iniciarVigilancia: m.iniciarVigilancia,
+}));
 
 import { register } from "./instrumentation";
 
@@ -55,5 +59,6 @@ describe("arranque", () => {
     await register();
     expect(m.error).toHaveBeenCalled();
     expect(m.iniciarProgramador).toHaveBeenCalled();
+    expect(m.iniciarVigilancia).toHaveBeenCalled();
   });
 });

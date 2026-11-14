@@ -278,6 +278,12 @@ Comprueba después de actualizar:
 - **Login con Pocket ID**: la cookie de sesión es ahora `SameSite=Strict`. Entra una vez con Pocket ID
   y confirma que acabas en el Dashboard (se ve un instante la pantalla de login). Si se queda en el
   login, entra con contraseña y avisa: el acceso de emergencia de § D sigue funcionando.
+- **Avisos de caída**: con algún canal configurado en Configuración → Notificaciones, para un
+  contenedor de prueba con `docker kill <contenedor>` (o deja que falle) y confirma que en unos dos
+  minutos llega «Proyecto caído» y, al volver, «Proyecto recuperado». Si el Panel o la VPS entera
+  caen no hay quien avise: para eso hace falta un vigilante externo (pendiente, issue #93).
+- **Reinicio automático**: redespliega los Proyectos de tipo Dockerfile, Node.js e imagen; hasta
+  entonces no vuelven a arrancar solos tras reiniciar la VPS.
 - **Volúmenes**: un volumen vacío se rellena en el siguiente deploy con lo que el contenedor tenía en
   esa ruta. El Panel usa para ello la imagen `busybox:1.37.0`, la misma que los backups de Proyectos.
 

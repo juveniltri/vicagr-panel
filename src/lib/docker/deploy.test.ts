@@ -104,7 +104,11 @@ vi.mock("dockerode", () => ({
 }));
 
 import { ErrorProceso } from "@/lib/backups/procesos";
-import { deployProyecto } from "./deploy";
+import { deployProyecto, TIEMPOS_SALUD } from "./deploy";
+
+// No waiting in tests; the ones about the wait set their own times.
+const sinEspera = { observacionMs: 0, intervaloMs: 0, maximoMs: 1000 };
+Object.assign(TIEMPOS_SALUD, sinEspera);
 
 const makeSpawnResult = (
   mockSpawn as unknown as { _make: (exitCode?: number) => object }
@@ -1281,4 +1285,125 @@ describe("deployProyecto — Volúmenes nuevos", () => {
 
     expect(mockEncadenar).not.toHaveBeenCalled();
   });
+});
+
+// `docker compose up -d` returns as soon as the containers are created: one
+// that dies two seconds later used to count as a successful deploy.
+describe("deployProyecto — espera a que los contenedores estén sanos", () => {
+  const contenedor = (servicio: string, State: string, Status: string) => ({
+    Id: `id-${servicio}`,
+    State,
+    Status,
+    Labels: { "com.docker.compose.service": servicio },
+  });
+  // The health check is the only listing of every container of the Proyecto:
+  // the network step asks for the running ones and Traefik's has no filter.
+  type Listado = { all?: boolean; filters?: { label?: string[] } };
+  const esSalud = (opts: Listado) =>
+    !!opts.all &&
+    !!opts.filters?.label?.[0]?.startsWith("com.docker.compose.project=");
+  const lecturas = (...sucesivas: ReturnType<typeof contenedor>[][]) => {
+    let i = 0;
+    mockListContainers.mockImplementation(async (opts: Listado) =>
+      esSalud(opts) ? sucesivas[Math.min(i++, sucesivas.length - 1)] : [],
+    );
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.assign(TIEMPOS_SALUD, sinEspera);
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue("");
+    mockUnlink.mockResolvedValue(undefined);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) =>
+        args[0] === "logs"
+          ? cb(null, "", "Error: Cannot find module 'next'")
+          : cb(null, "", ""),
+    );
+  });
+
+  it("falla si un Servicio sale con error tras arrancar, con sus últimas líneas de log", async () => {
+    lecturas([
+      contenedor("db", "running", "Up 3 seconds"),
+      contenedor("web", "exited", "Exited (1) 1 second ago"),
+    ]);
+
+    await expect(deployProyecto(baseParams)).rejects.toThrow(
+      /El Servicio «web» no arrancó: Exited \(1\) 1 second ago[\s\S]*Cannot find module 'next'/,
+    );
+  });
+
+  it("falla si un Servicio queda en bucle de reinicios o unhealthy", async () => {
+    lecturas([contenedor("web", "restarting", "Restarting (1) 1 second ago")]);
+    await expect(deployProyecto(baseParams)).rejects.toThrow("«web»");
+
+    lecturas([contenedor("web", "running", "Up 40 seconds (unhealthy)")]);
+    await expect(deployProyecto(baseParams)).rejects.toThrow("«web»");
+  });
+
+  it("espera mientras el healthcheck está arrancando y termina bien cuando pasa a healthy", async () => {
+    lecturas(
+      [contenedor("web", "running", "Up 1 second (health: starting)")],
+      [contenedor("web", "running", "Up 2 seconds (health: starting)")],
+      [contenedor("web", "running", "Up 3 seconds (healthy)")],
+    );
+
+    await expect(deployProyecto(baseParams)).resolves.toBeDefined();
+
+    const comprobaciones = mockListContainers.mock.calls.filter(([opts]) =>
+      esSalud(opts as Listado),
+    );
+    expect(comprobaciones).toHaveLength(3);
+  });
+
+  it("un Servicio que termina bien (migraciones) no cuenta como fallo", async () => {
+    lecturas([
+      contenedor("web", "running", "Up 3 seconds"),
+      contenedor("migrar", "exited", "Exited (0) 1 second ago"),
+    ]);
+
+    await expect(deployProyecto(baseParams)).resolves.toBeDefined();
+  });
+
+  it("falla si el healthcheck sigue arrancando pasado el máximo", async () => {
+    Object.assign(TIEMPOS_SALUD, { maximoMs: 0 });
+    lecturas([contenedor("web", "running", "Up 1 second (health: starting)")]);
+
+    await expect(deployProyecto(baseParams)).rejects.toThrow(
+      "«web» sigue sin estar sano",
+    );
+  });
+
+  it("cancelar el deploy corta la espera", async () => {
+    Object.assign(TIEMPOS_SALUD, { intervaloMs: 60_000, maximoMs: 600_000 });
+    lecturas([contenedor("web", "running", "Up 1 second (health: starting)")]);
+    const cancelar = new AbortController();
+    setTimeout(() => cancelar.abort("Cancelado"), 20);
+
+    await expect(
+      deployProyecto({ ...baseParams, signal: cancelar.signal }),
+    ).rejects.toThrow();
+  });
+
+  it.each(["dockerfile", "nodejs", "image"])(
+    "%s: el contenedor vuelve a arrancar solo tras un reinicio de la VPS",
+    async (tipo) => {
+      mockListContainers.mockResolvedValue([]);
+      await deployProyecto({ ...baseParams, tipo, imagenUrl: "nginx:1.27" });
+
+      const compose = mockWriteFile.mock.calls.find(
+        ([ruta]) =>
+          ruta === "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+      );
+      expect(compose?.[1]).toContain("    restart: unless-stopped");
+    },
+  );
 });

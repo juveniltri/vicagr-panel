@@ -7,8 +7,22 @@ Correcciones y Seguridad.
 
 ## [3.1.0] - 2026-11-14
 
-Correcciones de la auditoría de noviembre: variables con caracteres especiales, volúmenes que
-perdían ficheros, gestor de ficheros y sesión.
+Avisos cuando un Proyecto se cae y correcciones de la auditoría de noviembre: variables con
+caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y sesión.
+
+### Novedades
+
+- **Aviso de caída**: si un Servicio se cae, entra en bucle de reinicios o queda `unhealthy`, el
+  Proyecto pasa a «error» en un par de minutos y llega un aviso «Proyecto caído» por los canales de
+  Configuración → Notificaciones; cuando vuelve, «Proyecto recuperado». Detener un Proyecto desde el
+  Panel no avisa.
+- **El estado sigue a Docker**: el Panel comprueba cada minuto los contenedores, así que un Proyecto
+  ya no aparece «running» con sus contenedores caídos.
+- **Deploy comprobado**: un deploy solo termina bien si los contenedores siguen en marcha unos
+  segundos después y, si tienen healthcheck, están sanos. Si uno muere al arrancar, el deploy falla y
+  muestra sus últimas líneas de log.
+- **Reinicio automático**: los Proyectos de tipo Dockerfile, Node.js e imagen vuelven a arrancar solos
+  tras una caída o un reinicio de la VPS.
 
 ### Correcciones
 
@@ -47,6 +61,10 @@ perdían ficheros, gestor de ficheros y sesión.
 - Al abrir el Panel desde un enlace externo (un email, GitHub) verás un instante la pantalla de
   login antes de entrar: es el efecto de la cookie `SameSite=Strict`.
 - Comprueba una vez el login con Pocket ID tras actualizar.
+- Redespliega los Proyectos de tipo Dockerfile, Node.js e imagen para que reciban el reinicio
+  automático.
+- Un Servicio que sale con error (código distinto de 0) aparece ahora como «error». Si tienes alguno
+  que termina así a propósito, haz que salga con 0.
 
 ## [3.0.0] - 2026-11-05
 

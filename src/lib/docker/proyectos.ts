@@ -54,13 +54,17 @@ const GRAVEDAD: Record<EstadoServicio, number> = {
   error: 3,
 };
 
-function estadoDeContenedor(c: ContenedorProyecto): EstadoServicio {
-  if (c.State === "dead" || c.Status.includes("(unhealthy)")) return "error";
+export function estadoDeContenedor(c: {
+  State?: string;
+  Status?: string;
+}): EstadoServicio {
+  const Status = c.Status ?? "";
+  if (c.State === "dead" || Status.includes("(unhealthy)")) return "error";
   if (c.State === "restarting") return "deploying";
   if (c.State === "running") return "running";
   // Docker has no "stopped on purpose" flag, so the exit code decides: 0 is a
   // clean exit (one-shot jobs) and 143/137 are what `docker stop` leaves.
-  const salida = /^Exited \((\d+)\)/.exec(c.Status)?.[1];
+  const salida = /^Exited \((\d+)\)/.exec(Status)?.[1];
   return salida && !["0", "143", "137"].includes(salida) ? "error" : "stopped";
 }
 

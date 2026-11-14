@@ -1,5 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { setTimeout as esperar } from "node:timers/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
 import { IMAGEN_AUXILIAR } from "@/lib/backups/comandos";
@@ -13,6 +14,7 @@ import {
 } from "@/lib/compose";
 import { docker } from "./client";
 import { asegurarRedCliente } from "./networks";
+import { estadoDeContenedor } from "./proyectos";
 import { conectarTraefikARed } from "./traefik";
 
 const log = logger.child({ module: "docker" });
@@ -277,6 +279,67 @@ function serializarVolumes(
   ];
 }
 
+// How long a deploy watches the new containers before calling it a success.
+export const TIEMPOS_SALUD = {
+  // A container that is going to crash at startup usually does it within this.
+  observacionMs: 10_000,
+  intervaloMs: 2_000,
+  // Ceiling for a healthcheck that is still "starting".
+  maximoMs: 180_000,
+};
+
+// `docker compose up -d` returns once the containers exist. A deploy is only
+// good if they are still up a moment later and, where there is a healthcheck,
+// healthy.
+async function esperarContenedoresSanos(
+  projectSlug: string,
+  onLog?: (line: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const inicio = Date.now();
+  const nombre = (c: { Labels?: Record<string, string>; Id: string }) =>
+    c.Labels?.["com.docker.compose.service"] ?? c.Id.slice(0, 12);
+  onLog?.("→ Comprobando que los contenedores siguen en marcha...");
+  for (;;) {
+    const contenedores = await docker.listContainers({
+      all: true,
+      filters: { label: [`com.docker.compose.project=${projectSlug}`] },
+    });
+    const caido = contenedores.find((c) => {
+      const estado = estadoDeContenedor(c);
+      // "deploying" is Docker's restarting: a crash loop.
+      return estado === "error" || estado === "deploying";
+    });
+    if (caido) {
+      const { stdout, stderr } = await execFileAsync("docker", [
+        "logs",
+        "--tail",
+        "20",
+        caido.Id,
+      ]).catch(() => ({ stdout: "", stderr: "" }));
+      throw new Error(
+        [
+          `El Servicio «${nombre(caido)}» no arrancó: ${caido.Status}`,
+          stdout,
+          stderr,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+    }
+    const arrancando = contenedores.find((c) =>
+      c.Status?.includes("(health: starting)"),
+    );
+    const transcurrido = Date.now() - inicio;
+    if (!arrancando && transcurrido >= TIEMPOS_SALUD.observacionMs) return;
+    if (arrancando && transcurrido >= TIEMPOS_SALUD.maximoMs)
+      throw new Error(
+        `El Servicio «${nombre(arrancando)}» sigue sin estar sano tras ${Math.round(TIEMPOS_SALUD.maximoMs / 1000)} s`,
+      );
+    await esperar(TIEMPOS_SALUD.intervaloMs, undefined, { signal });
+  }
+}
+
 const LOGGING_YAML = [
   "    logging:",
   `      driver: ${LIMITE_LOGS.driver}`,
@@ -306,6 +369,8 @@ function generarDockerComposeConBuild(params: {
     `      - "${params.puerto}"`,
     ...serializarEnvironment(params.variables ?? []),
     ...serializarVolumes(params.volumenes ?? []),
+    // Without a policy Docker leaves it down after a crash or a VPS reboot.
+    "    restart: unless-stopped",
     ...LOGGING_YAML,
   ].join("\n");
 }
@@ -325,6 +390,8 @@ function generarDockerComposeConImage(params: {
     `      - "${params.puerto}"`,
     ...serializarEnvironment(params.variables ?? []),
     ...serializarVolumes(params.volumenes ?? []),
+    // Without a policy Docker leaves it down after a crash or a VPS reboot.
+    "    restart: unless-stopped",
     ...LOGGING_YAML,
   ].join("\n");
 }
@@ -796,6 +863,8 @@ export async function deployProyecto(params: {
         });
       }
     }
+
+    await esperarContenedoresSanos(projectSlug, onLog, signal);
 
     onLog?.("→ Conectando red y proxy...");
     await asegurarRedCliente(clienteSlug);
