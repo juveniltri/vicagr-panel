@@ -309,6 +309,14 @@ Comprueba después de actualizar:
   y 1 CPU al redesplegar. Mira antes cuánto usa hoy cada uno (`docker stats --no-stream`) y sube el
   límite en Ajustes → Editar a los que lo necesiten (una base de datos, un WordPress con mucho
   tráfico).
+- **Proyectos Node.js**: tras redesplegar se ejecutan con el usuario `node` (uid 1000) y el Panel
+  cambia el propietario de sus volúmenes a ese usuario la primera vez. Comprueba antes que el
+  «Puerto del contenedor» es el puerto real de la app: el deploy espera a que escuche en él y falla
+  a los 3 minutos si no lo hace. Si una app necesita root (instala paquetes al arrancar, por
+  ejemplo), pásala al tipo Dockerfile con su propio Dockerfile.
+- **Eliminar un Proyecto** borra ahora sus contenedores. Sus datos se conservan salvo que marques
+  «Borrar también sus datos de la VPS»; esa casilla borra la carpeta del Proyecto y sus volúmenes de
+  Docker y no se puede deshacer.
 - **Reinicio automático**: redespliega los Proyectos de tipo Dockerfile, Node.js e imagen; hasta
   entonces no vuelven a arrancar solos tras reiniciar la VPS.
 - **Volúmenes**: un volumen vacío se rellena en el siguiente deploy con lo que el contenedor tenía en

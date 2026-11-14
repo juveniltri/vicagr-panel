@@ -30,6 +30,12 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
 - **Límites de recursos**: los Proyectos de tipo Dockerfile, Node.js e imagen arrancan con un máximo
   de 1 GB de memoria y 1 CPU, para que uno desbocado no deje sin recursos a los demás. Se cambian en
   Ajustes → Editar. Los de tipo compose ponen los suyos en su `docker-compose.yml`.
+- **Plantillas al crear un Proyecto**: «WordPress (con MariaDB)» crea el compose con WordPress y su
+  base de datos, volúmenes para `wp-content` y los datos, subidas de hasta 64 MB y contraseñas
+  aleatorias en Variables; queda listo para instalar tras el primer deploy. «Next.js» rellena tipo,
+  puerto y comandos.
+- **Node.js**: el Panel comprueba que la app escucha en su puerto. Un deploy cuya app no arranca
+  falla en vez de darse por bueno, y una app que deja de responder aparece como caída.
 - **Deploys sin corte innecesario**: un deploy ya no reinicia todos los Servicios, solo los que han
   cambiado. La base de datos de un Proyecto sigue en marcha cuando solo cambia la aplicación.
 - **Eliminar un Proyecto** borra también sus contenedores y los ficheros con sus variables. Sus datos
@@ -104,6 +110,9 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
   automático. **Antes, revisa sus límites** en Ajustes → Editar: con ese deploy empiezan a aplicarse
   1 GB de memoria y 1 CPU, y un contenedor que necesite más memoria será reiniciado por Docker.
 - La migración de la base de datos se aplica sola al arrancar.
+- **Proyectos Node.js**: al redesplegar pasan a ejecutarse sin root y con comprobación de puerto.
+  Revisa que el «Puerto del contenedor» de cada uno sea el puerto en el que escucha la app: si no
+  coincide, el deploy fallará a los 3 minutos con «sigue sin estar sano».
 - Un deploy ya no reinicia los Servicios que no cambian. Si tu repositorio monta ficheros de
   configuración en un Servicio (un `nginx.conf`, por ejemplo) y solo cambian esos ficheros, pulsa
   Reiniciar en ese Servicio después del deploy.
