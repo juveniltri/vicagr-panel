@@ -59,6 +59,10 @@ const serverSchema = z
     // Panel — dominio público del panel (usado en next.config.ts para redirects HTTPS)
     PANEL_DOMAIN: z.string().optional(),
 
+    // Vigilancia — URL que el Panel llama cada minuto mientras está sano
+    // (healthchecks.io o similar); si deja de llegar, ese servicio avisa.
+    LATIDO_URL: vacioComoAusente(z.string().url()),
+
     // Logging
     LOG_LEVEL: z
       .enum(["trace", "debug", "info", "warn", "error", "fatal"])

@@ -47,6 +47,7 @@ vi.mock("@/lib/docker/proyectos", () => ({
   detenerProyecto: vi.fn(),
   restartProyecto: vi.fn(),
   listarServicios: vi.fn(),
+  eliminarContenedoresProyecto: vi.fn().mockResolvedValue(undefined),
   estadoContenedores: vi.fn().mockResolvedValue("running"),
   DockerError: class DockerError extends Error {
     constructor(
@@ -72,6 +73,8 @@ vi.mock("@/lib/docker/deploys", () => ({
 
 vi.mock("@/lib/docker/deploy", () => ({
   prepararRepo: vi.fn().mockResolvedValue(undefined),
+  comandoSshGit: (clave: string) => `ssh -i ${clave}`,
+  borrarFicherosProyecto: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("node:fs/promises", () => ({
@@ -149,10 +152,12 @@ import {
   ejecutarDeploy,
   limpiarDeploysHuerfanos,
 } from "@/lib/docker/deploys";
-import { prepararRepo } from "@/lib/docker/deploy";
+import { borrarFicherosProyecto, prepararRepo } from "@/lib/docker/deploy";
+import { eliminarContenedoresProyecto } from "@/lib/docker/proyectos";
+import { desconectarTraefikDeRed } from "@/lib/docker/traefik";
 import { readFile } from "node:fs/promises";
 import { asegurarRedCliente, eliminarRedCliente } from "@/lib/docker/networks";
-import { descifrar } from "@/lib/crypto";
+import { cifrar, descifrar } from "@/lib/crypto";
 import { leerCertificados } from "@/lib/ssl/acme";
 import { enviarNotificacion } from "@/lib/notificaciones";
 import { hayOperacionEnCurso, OperacionEnCurso } from "@/lib/backups/operacion";
@@ -3163,5 +3168,290 @@ describe("proyectos — Proyecto restaurando", () => {
       data: { estado: "stopped" },
     });
     expect(ejecutarDeploy).not.toHaveBeenCalled();
+  });
+});
+
+describe("proyectos — límites de recursos", () => {
+  const conLimites = {
+    ...mockProyecto,
+    estado: "stopped" as const,
+    tipo: "image" as const,
+    imagenUrl: "nginx:1.27",
+    limiteMemoriaMb: 512,
+    limiteCpus: 0.5,
+    rutas: [],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(estaRestaurando).mockReturnValue(false);
+    // Reset, not clear: earlier tests leave one-off answers queued.
+    vi.mocked(prisma.proyecto.findUnique).mockReset();
+    vi.mocked(prisma.proyecto.update).mockReset();
+    vi.mocked(ejecutarDeploy).mockReset();
+    vi.mocked(ejecutarDeploy).mockResolvedValue({
+      resultado: "exito",
+      output: "",
+    });
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      conLimites as never,
+    );
+    vi.mocked(prisma.proyecto.update).mockResolvedValue({
+      ...conLimites,
+      cliente: mockClienteRow,
+    } as never);
+  });
+
+  it("editar guarda los límites", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.editar({
+      id: "p1",
+      nombre: conLimites.nombre,
+      limiteMemoriaMb: 2048,
+      limiteCpus: 2,
+    });
+
+    expect(
+      vi.mocked(prisma.proyecto.update).mock.calls[0][0].data,
+    ).toMatchObject({ limiteMemoriaMb: 2048, limiteCpus: 2 });
+  });
+
+  it.each([
+    { limiteMemoriaMb: 16 },
+    { limiteCpus: 0 },
+    { limiteMemoriaMb: 512.5 },
+  ])("editar rechaza %o", async (limites) => {
+    const ctx = await createContext();
+    await expect(
+      createCaller(ctx).proyectos.editar({
+        id: "p1",
+        nombre: conLimites.nombre,
+        ...limites,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("obtener los devuelve para el formulario", async () => {
+    const ctx = await createContext();
+    const proyecto = await createCaller(ctx).proyectos.obtener({ id: "p1" });
+
+    expect(proyecto).toMatchObject({ limiteMemoriaMb: 512, limiteCpus: 0.5 });
+  });
+
+  it("el deploy los pasa al compose generado", async () => {
+    vi.mocked(prisma.variableEntorno.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.volumen.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.configuracionDeploy.findUnique).mockResolvedValue(null);
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.deploy({ id: "p1" });
+
+    expect(ejecutarDeploy).toHaveBeenCalledWith(
+      expect.objectContaining({ limites: { memoriaMb: 512, cpus: 0.5 } }),
+    );
+  });
+});
+
+// Docker only sees "<cliente>-<proyecto>": the Cliente "a-b" with the Proyecto
+// "c" and the Cliente "a" with the Proyecto "b-c" are the same name there, and
+// stopping, reading logs or restoring one would act on the other.
+describe("proyectos — nombres que Docker vería como el mismo", () => {
+  const existente = { nombre: "c", cliente: { slug: "a-b" } };
+  const clienteA = { id: "ca", slug: "a", nombre: "A", creadoEn: new Date() };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(estaRestaurando).mockReturnValue(false);
+    vi.mocked(prisma.proyecto.findUnique).mockReset();
+    vi.mocked(prisma.proyecto.update).mockReset();
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([existente] as never);
+    vi.mocked(prisma.cliente.findUnique).mockResolvedValue(clienteA as never);
+  });
+
+  it("crear rechaza un Proyecto cuyo nombre completo coincide con el de otro Cliente", async () => {
+    const ctx = await createContext();
+
+    await expect(
+      createCaller(ctx).proyectos.crear({ clienteId: "ca", nombre: "b-c" }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: expect.stringContaining("«c» del Cliente «a-b»"),
+    });
+    expect(prisma.proyecto.create).not.toHaveBeenCalled();
+  });
+
+  it("crear acepta un nombre que no coincide con ninguno", async () => {
+    vi.mocked(prisma.proyecto.create).mockResolvedValue({
+      ...mockProyecto,
+      cliente: clienteA,
+    } as never);
+    const ctx = await createContext();
+
+    await expect(
+      createCaller(ctx).proyectos.crear({ clienteId: "ca", nombre: "b-d" }),
+    ).resolves.toBeDefined();
+  });
+
+  it("renombrar rechaza la coincidencia, sin contar al propio Proyecto", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      id: "p9",
+      nombre: "otro",
+      estado: "stopped",
+      cliente: clienteA,
+      rutas: [],
+    } as never);
+    const ctx = await createContext();
+
+    await expect(
+      createCaller(ctx).proyectos.editar({ id: "p9", nombre: "b-c" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(
+      vi.mocked(prisma.proyecto.findMany).mock.calls.at(-1)?.[0]?.where,
+    ).toEqual({ id: { not: "p9" } });
+    expect(prisma.proyecto.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("proyectos.eliminar — lo que deja en la VPS", () => {
+  const parado = {
+    ...mockProyecto,
+    estado: "stopped" as const,
+    rutas: [],
+    cliente: mockClienteRow,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(estaRestaurando).mockReturnValue(false);
+    vi.mocked(prisma.proyecto.findUnique).mockReset();
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(parado as never);
+    vi.mocked(prisma.proyecto.delete).mockResolvedValue(parado as never);
+    vi.mocked(prisma.proyecto.count).mockResolvedValue(1);
+    vi.mocked(eliminarContenedoresProyecto).mockResolvedValue(undefined);
+  });
+
+  it("borra sus contenedores y sus ficheros de variables, pero no sus datos", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
+
+    expect(eliminarContenedoresProyecto).toHaveBeenCalledWith(
+      mockClienteRow.slug,
+      parado.nombre,
+      { volumenes: false },
+    );
+    expect(borrarFicherosProyecto).toHaveBeenCalledWith(
+      mockClienteRow.slug,
+      parado.nombre,
+      false,
+    );
+  });
+
+  it("con borrarDatos borra también la carpeta del Proyecto y sus volúmenes", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.eliminar({ id: "p1", borrarDatos: true });
+
+    expect(eliminarContenedoresProyecto).toHaveBeenCalledWith(
+      mockClienteRow.slug,
+      parado.nombre,
+      { volumenes: true },
+    );
+    expect(borrarFicherosProyecto).toHaveBeenCalledWith(
+      mockClienteRow.slug,
+      parado.nombre,
+      true,
+    );
+  });
+
+  it("si Docker no deja borrar los contenedores, el Proyecto sigue en el Panel", async () => {
+    vi.mocked(eliminarContenedoresProyecto).mockRejectedValue(
+      new Error("docker"),
+    );
+    const ctx = await createContext();
+
+    await expect(
+      createCaller(ctx).proyectos.eliminar({ id: "p1" }),
+    ).rejects.toThrow();
+    expect(prisma.proyecto.delete).not.toHaveBeenCalled();
+  });
+
+  // Docker refuses to remove a network with a container attached: deleting
+  // the last Proyecto of a Cliente used to end in a 500.
+  it("al eliminar el último Proyecto del Cliente desconecta Traefik de su red antes de borrarla", async () => {
+    vi.mocked(prisma.proyecto.count).mockResolvedValue(0);
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
+
+    expect(desconectarTraefikDeRed).toHaveBeenCalledWith(mockClienteRow.slug);
+    expect(
+      vi.mocked(desconectarTraefikDeRed).mock.invocationCallOrder[0],
+    ).toBeLessThan(vi.mocked(eliminarRedCliente).mock.invocationCallOrder[0]);
+  });
+});
+
+describe("proyectos.crear — plantilla WordPress", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.cliente.findUnique).mockResolvedValue(
+      mockClienteRow as never,
+    );
+    vi.mocked(prisma.proyecto.create).mockResolvedValue({
+      ...mockProyecto,
+      cliente: mockClienteRow,
+    } as never);
+  });
+
+  const datosCreados = () =>
+    vi.mocked(prisma.proyecto.create).mock.calls[0][0].data as {
+      tipo: string;
+      puerto: number;
+      composeContent?: string;
+      variables?: { create: Array<{ clave: string; valorCifrado: string }> };
+    };
+
+  it("crea un Proyecto compose con WordPress y su base de datos, en el puerto 80", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.crear({
+      clienteId: "c1",
+      nombre: "blog",
+      tipo: "nodejs",
+      puerto: 3000,
+      plantilla: "wordpress",
+    });
+
+    expect(datosCreados()).toMatchObject({ tipo: "compose", puerto: 80 });
+    expect(datosCreados().composeContent).toContain("wordpress:6-apache");
+    expect(datosCreados().composeContent).toContain("mariadb:11");
+  });
+
+  it("genera las contraseñas de la base de datos como variables cifradas del Proyecto", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.crear({
+      clienteId: "c1",
+      nombre: "blog",
+      plantilla: "wordpress",
+    });
+
+    expect(datosCreados().variables?.create.map((v) => v.clave)).toEqual([
+      "DB_PASSWORD",
+      "DB_ROOT_PASSWORD",
+    ]);
+    // Random and hex: safe to drop into the compose as it is.
+    const valores = vi.mocked(cifrar).mock.calls.map(([valor]) => valor);
+    expect(valores).toHaveLength(2);
+    expect(valores[0]).toMatch(/^[0-9a-f]{48}$/);
+    expect(valores[0]).not.toBe(valores[1]);
+  });
+
+  it("sin plantilla no añade compose ni variables", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.crear({ clienteId: "c1", nombre: "api" });
+
+    expect(datosCreados().composeContent).toBeUndefined();
+    expect(datosCreados().variables).toBeUndefined();
   });
 });

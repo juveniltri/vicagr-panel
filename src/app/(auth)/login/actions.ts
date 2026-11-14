@@ -1,6 +1,6 @@
 "use server";
 
-import { DemasiadosIntentos, signIn } from "@/lib/auth";
+import { DemasiadosIntentos, SoloEmergencia, signIn } from "@/lib/auth";
 import { PROVEEDOR_OIDC } from "@/lib/sesion";
 import { AuthError } from "next-auth";
 
@@ -9,7 +9,13 @@ export async function loginAction(email: string, password: string) {
     await signIn("credentials", { email, password, redirectTo: "/" });
   } catch (error) {
     if (error instanceof DemasiadosIntentos) {
-      return { error: "Demasiados intentos. Espera un minuto." };
+      return { error: "Demasiados intentos. Inténtalo más tarde." };
+    }
+    if (error instanceof SoloEmergencia) {
+      return {
+        error:
+          "La contraseña solo vale por el acceso de emergencia. Entra con Pocket ID.",
+      };
     }
     if (error instanceof AuthError) {
       return { error: "Credenciales incorrectas" };

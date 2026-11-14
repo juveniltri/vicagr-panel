@@ -54,10 +54,18 @@ const GRAVEDAD: Record<EstadoServicio, number> = {
   error: 3,
 };
 
-function estadoDeContenedor(c: ContenedorProyecto): EstadoServicio {
-  if (c.State === "dead" || c.Status.includes("(unhealthy)")) return "error";
+export function estadoDeContenedor(c: {
+  State?: string;
+  Status?: string;
+}): EstadoServicio {
+  const Status = c.Status ?? "";
+  if (c.State === "dead" || Status.includes("(unhealthy)")) return "error";
   if (c.State === "restarting") return "deploying";
-  return c.State === "running" ? "running" : "stopped";
+  if (c.State === "running") return "running";
+  // Docker has no "stopped on purpose" flag, so the exit code decides: 0 is a
+  // clean exit (one-shot jobs) and 143/137 are what `docker stop` leaves.
+  const salida = /^Exited \((\d+)\)/.exec(Status)?.[1];
+  return salida && !["0", "143", "137"].includes(salida) ? "error" : "stopped";
 }
 
 export async function listarServicios(
@@ -134,7 +142,15 @@ export async function restartProyecto(
   servicio?: string,
 ): Promise<void> {
   const slug = projectSlug(clienteSlug, proyectoNombre);
-  const containers = await listProjectContainers(slug, false, servicio);
+  const todos = await listProjectContainers(slug, true, servicio);
+  // Crashed containers are what Reiniciar is pressed for. One that exited
+  // cleanly (a one-shot job, or stopped on purpose) only comes back when its
+  // Servicio is restarted by name.
+  const containers = servicio
+    ? todos
+    : todos.filter(
+        (c) => !(c.State === "exited" && estadoDeContenedor(c) === "stopped"),
+      );
   for (const c of containers) {
     try {
       await docker.getContainer(c.Id).restart();
@@ -221,4 +237,33 @@ async function streamContainerLogs(
       reject(err);
     });
   });
+}
+
+// Deleting a Proyecto in the Panel used to leave its containers behind, with
+// nothing in the Panel left to stop them. Named volumes hold the Proyecto's
+// data, so they only go when asked for.
+export async function eliminarContenedoresProyecto(
+  clienteSlug: string,
+  proyectoNombre: string,
+  { volumenes = false }: { volumenes?: boolean } = {},
+): Promise<void> {
+  const label = [
+    `com.docker.compose.project=${projectSlug(clienteSlug, proyectoNombre)}`,
+  ];
+  try {
+    for (const c of await docker.listContainers({
+      all: true,
+      filters: { label },
+    }))
+      await docker.getContainer(c.Id).remove({ force: true });
+    // The default network Compose created for it; the Cliente's own stays.
+    for (const red of await docker.listNetworks({ filters: { label } }))
+      await docker.getNetwork(red.Id).remove();
+    if (!volumenes) return;
+    const { Volumes } = await docker.listVolumes({ filters: { label } });
+    for (const v of Volumes ?? []) await docker.getVolume(v.Name).remove();
+  } catch (err) {
+    // Without Docker (local development) there is nothing to remove.
+    if (process.env.NODE_ENV === "production") handleDockerError(err);
+  }
 }

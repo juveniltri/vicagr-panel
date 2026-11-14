@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import {
   DURACION_SESION_OIDC_MS,
   accesoOidc,
+  passwordPermitida,
   sesionVigente,
   tokenOidc,
 } from "./sesion";
@@ -125,5 +126,24 @@ describe("tokenOidc", () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
     expect(await tokenOidc({ sub: "sub-1" }, "sub-1")).toBeNull();
     expect(await tokenOidc({ sub: "sub-1" }, undefined)).toBeNull();
+  });
+});
+
+// With Pocket ID in place the password is only a way back in when Pocket ID
+// is down, and that way is the SSH tunnel, never the internet.
+describe("passwordPermitida", () => {
+  const porTraefik = new Headers({ "x-real-ip": "203.0.113.7" });
+  const porTunel = new Headers({ host: "localhost:3000" });
+
+  it("sin Pocket ID configurado la contraseña vale desde cualquier sitio", () => {
+    expect(passwordPermitida(porTraefik, false)).toBe(true);
+  });
+
+  it("con Pocket ID no vale por internet: Traefik siempre añade X-Real-Ip", () => {
+    expect(passwordPermitida(porTraefik, true)).toBe(false);
+  });
+
+  it("con Pocket ID sigue valiendo por el acceso de emergencia, que no pasa por Traefik", () => {
+    expect(passwordPermitida(porTunel, true)).toBe(true);
   });
 });

@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import type { PayloadNotificacion } from "./index";
+import { asuntoNotificacion, esAvisoDeEstado } from "./webhook";
 
 export async function enviarEmail(
   config: {
@@ -24,20 +25,22 @@ export async function enviarEmail(
   const lineas = payload.output.split("\n");
   const outputTruncado = lineas.slice(-50).join("\n");
 
-  const titulo = payload.evento === "backup" ? "Backup" : "Deploy";
-
   await transporter.sendMail({
     from: config.remitente,
     to: config.destinatario,
-    subject: `[vicagr] ${titulo} ${payload.resultado} — ${payload.proyectoNombre}`,
+    subject: `[vicagr] ${asuntoNotificacion(payload)} — ${payload.proyectoNombre}`,
     text: [
       `Proyecto: ${payload.proyectoNombre}`,
       `Cliente: ${payload.clienteSlug}`,
-      `Rama: ${payload.rama}`,
-      `SHA: ${payload.sha ?? "—"}`,
-      `Resultado: ${payload.resultado}`,
-      "",
-      "Output (últimas 50 líneas):",
+      ...(esAvisoDeEstado(payload)
+        ? [""]
+        : [
+            `Rama: ${payload.rama}`,
+            `SHA: ${payload.sha ?? "—"}`,
+            `Resultado: ${payload.resultado}`,
+            "",
+            "Output (últimas 50 líneas):",
+          ]),
       outputTruncado,
     ].join("\n"),
   });

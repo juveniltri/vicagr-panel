@@ -21,6 +21,7 @@ vi.mock("@/lib/logger", () => ({
 import { prisma } from "@/lib/prisma";
 import { estaRestaurando } from "@/lib/backups/restaurando";
 import { lanzarDeploy } from "@/server/routers/proyectos";
+import { LIMITE_CUERPO } from "@/lib/github/webhook";
 import { POST } from "./route";
 
 const proyectoCrm = {
@@ -35,7 +36,7 @@ const proyectoCrm = {
 
 const pushPayload = {
   ref: "refs/heads/main",
-  after: "e881352abcdef",
+  after: "e881352abcdef0123456789abcdef0123456789a",
   repository: {
     clone_url: "https://github.com/microcapilar/crm.git",
     ssh_url: "git@github.com:microcapilar/crm.git",
@@ -79,7 +80,7 @@ describe("POST /api/webhooks/github", () => {
     expect(res.status).toBe(202);
     expect(lanzarDeploy).toHaveBeenCalledWith(proyectoCrm, {
       rama: "main",
-      sha: "e881352abcdef",
+      sha: "e881352abcdef0123456789abcdef0123456789a",
       origen: "webhook",
     });
   });
@@ -176,5 +177,34 @@ describe("POST /api/webhooks/github", () => {
     expect(await res.json()).toEqual({ ok: true, deployed: ["p2"] });
     expect(lanzarDeploy).toHaveBeenCalledTimes(1);
     expect(lanzarDeploy).toHaveBeenCalledWith(otro, expect.anything());
+  });
+
+  // The commit ends up as an argument to `git checkout`.
+  it.each([
+    "--upload-pack=x",
+    "main",
+    "e881352",
+    "E881352ABCDEF0123456789ABCDEF0123456789A",
+  ])(
+    "rechaza con 400 un commit que no es un sha completo: %s",
+    async (after) => {
+      const res = await POST(
+        peticion(JSON.stringify({ ...pushPayload, after })),
+      );
+
+      expect(res.status).toBe(400);
+      expect(lanzarDeploy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rechaza con 413 un cuerpo mayor que el máximo sin procesarlo", async () => {
+    const enorme = JSON.stringify({ ...pushPayload, relleno: "x".repeat(200) });
+    LIMITE_CUERPO.bytes = 100;
+
+    const res = await POST(peticion(enorme));
+
+    expect(res.status).toBe(413);
+    expect(prisma.proyecto.findMany).not.toHaveBeenCalled();
+    LIMITE_CUERPO.bytes = 25 * 1024 * 1024;
   });
 });

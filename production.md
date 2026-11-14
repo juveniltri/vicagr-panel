@@ -258,6 +258,70 @@ docker compose up -d --build
 Los Proyectos redesplegados con la versión nueva siguen funcionando; vuelve a desplegarlos si
 algo de su configuración depende de la versión anterior.
 
+### B1b. A la 3.1.0 (variables, volúmenes y gestor de ficheros)
+
+Sin migración ni variables nuevas: `git pull && docker compose up -d --build`.
+
+Antes de redesplegar los Proyectos, revisa sus variables en el Panel:
+
+- Desde esta versión el valor llega al contenedor **tal cual está escrito**. Si alguna variable
+  referenciaba a otra (`postgres://${USUARIO}:${CLAVE}@db`) o llevaba `$$` para escapar un `$`,
+  escribe el valor final: ya no se sustituye ni se reduce.
+- Las referencias `${VARIABLE}` escritas en el propio `docker-compose.yml` siguen funcionando.
+
+Después, redespliega los Proyectos cuyas variables contengan `$`, `#`, comillas o espacios. Los
+Proyectos de compose pegado dejan de usar `/var/vicagr/repos/<cliente>/.panel/.env`: el Panel lo
+borra en el primer deploy y cada Proyecto pasa a `<proyecto>.env` en esa misma carpeta.
+
+**Antes de actualizar, si el Panel tiene Pocket ID configurado** (`OIDC_ISSUER` en el `.env`): desde
+esta versión la contraseña solo entra por el acceso de emergencia. Comprueba que cada persona tiene su
+cuenta vinculada en Usuarios → Pocket ID y haz la prueba de § D. Si Pocket ID cae, se entra con
+`ssh -L 3000:localhost:3000 <vps>` y `http://localhost:3000`, con usuario y contraseña.
+
+Comprueba después de actualizar:
+
+- **`/api/health`**: con `curl` devuelve ya solo `{"status":"ok"}` (o `degraded` con un 503). Los
+  cuatro checks y la versión se ven en el Dashboard → Estado del VPS, o abriendo `/api/health` en el
+  navegador con la sesión iniciada.
+- **Git por SSH**: si GitHub (u otro servidor) cambia su clave, el deploy falla con «host key
+  verification failed». Tras confirmar que el cambio es legítimo, borra en la VPS
+  `/var/vicagr/repos/.git-known_hosts` y redespliega.
+
+- **Login con Pocket ID**: la cookie de sesión es ahora `SameSite=Strict`. Entra una vez con Pocket ID
+  y confirma que acabas en el Dashboard (se ve un instante la pantalla de login). Si se queda en el
+  login, entra con contraseña y avisa: el acceso de emergencia de § D sigue funcionando.
+- **Avisos de caída**: con algún canal configurado en Configuración → Notificaciones, para un
+  contenedor de prueba con `docker kill <contenedor>` (o deja que falle) y confirma que en unos dos
+  minutos llega «Proyecto caído» y, al volver, «Proyecto recuperado».
+- **Vigilante externo** (recomendado): si cae el Panel, Traefik o la VPS entera, solo puede avisar
+  alguien de fuera.
+  1. En [healthchecks.io](https://healthchecks.io) crea un check con periodo de 1 minuto y gracia de
+     5, y configura allí a quién avisa (email, Telegram…).
+  2. Añade su URL al `.env` de la VPS: `LATIDO_URL=https://hc-ping.com/<id>` y levanta el stack
+     (`docker compose up -d`). El Panel la llama cada minuto mientras `/api/health` está en verde;
+     si deja de hacerlo, healthchecks.io avisa. Vacía o ausente, no se envía nada.
+  3. Para los dominios de los clientes, añade un monitor HTTP por dominio en un servicio como
+     UptimeRobot o Better Stack: comprueban desde fuera que la web responde y que el certificado no
+     caduca.
+- **Alerta de disco**: al llegar al 85 % de ocupación llega «Disco casi lleno» por los canales de
+  notificación, y «Disco recuperado» al bajar del 80 %.
+- **Límites de recursos**: cada Proyecto de tipo Dockerfile, Node.js o imagen queda con 1 GB de memoria
+  y 1 CPU al redesplegar. Mira antes cuánto usa hoy cada uno (`docker stats --no-stream`) y sube el
+  límite en Ajustes → Editar a los que lo necesiten (una base de datos, un WordPress con mucho
+  tráfico).
+- **Proyectos Node.js**: tras redesplegar se ejecutan con el usuario `node` (uid 1000) y el Panel
+  cambia el propietario de sus volúmenes a ese usuario la primera vez. Comprueba antes que el
+  «Puerto del contenedor» es el puerto real de la app: el deploy espera a que escuche en él y falla
+  a los 3 minutos si no lo hace. Si una app necesita root (instala paquetes al arrancar, por
+  ejemplo), pásala al tipo Dockerfile con su propio Dockerfile.
+- **Eliminar un Proyecto** borra ahora sus contenedores. Sus datos se conservan salvo que marques
+  «Borrar también sus datos de la VPS»; esa casilla borra la carpeta del Proyecto y sus volúmenes de
+  Docker y no se puede deshacer.
+- **Reinicio automático**: redespliega los Proyectos de tipo Dockerfile, Node.js e imagen; hasta
+  entonces no vuelven a arrancar solos tras reiniciar la VPS.
+- **Volúmenes**: un volumen vacío se rellena en el siguiente deploy con lo que el contenedor tenía en
+  esa ruta. El Panel usa para ello la imagen `busybox:1.37.0`, la misma que los backups de Proyectos.
+
 ### B1a. Renombrado `vicalba` → `vicagr` (versión 3.0.0)
 
 Cambian `/var/vicalba` → `/var/vicagr`, la red `vicalba-net` → `vicagr-net`, los contenedores

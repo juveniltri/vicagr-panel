@@ -1,20 +1,61 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { loginAction, loginOidcAction } from "@/app/(auth)/login/actions";
+
+// Only a path on this origin: the parameter comes from the URL.
+function destinoTrasEntrar(search: string, origin: string): string {
+  const pedido = new URLSearchParams(search).get("callbackUrl");
+  if (!pedido) return "/";
+  try {
+    const url = new URL(pedido, origin);
+    if (url.origin !== origin || url.pathname.startsWith("/login")) return "/";
+    // "//otro.sitio/x" is a same-origin path here, but the browser would read
+    // it as an address on another host.
+    return url.pathname.replace(/^\/+/, "/") + url.search;
+  } catch {
+    return "/";
+  }
+}
 
 export function LoginForm({
   oidcActivo = false,
+  passwordDisponible = true,
   errorOidc,
   subSinVincular,
 }: {
   oidcActivo?: boolean;
+  // False over the internet once Pocket ID is set up: the password then only
+  // works through the emergency access.
+  passwordDisponible?: boolean;
   errorOidc?: string;
   subSinVincular?: string;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [redirigiendo, setRedirigiendo] = useState(false);
+
+  // The session cookie is SameSite=Strict, so the browser withholds it on a
+  // navigation that starts on another site (Pocket ID's redirect back, a link
+  // in an email) and a logged-in user lands here. A same-origin fetch does
+  // carry it.
+  useEffect(() => {
+    if (errorOidc) return;
+    let vigente = true;
+    fetch("/api/auth/session")
+      .then((res) => res.json())
+      .then((sesion: unknown) => {
+        if (!vigente || !sesion || typeof sesion !== "object") return;
+        if (!("user" in sesion)) return;
+        window.location.replace(
+          destinoTrasEntrar(window.location.search, window.location.origin),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      vigente = false;
+    };
+  }, [errorOidc]);
 
   async function entrarConPocketId() {
     setRedirigiendo(true);
@@ -79,54 +120,66 @@ export function LoginForm({
           >
             {redirigiendo ? "Redirigiendo…" : "Entrar con Pocket ID"}
           </button>
-          <p className="font-body text-xs text-text-muted text-center">
-            o con tu contraseña
-          </p>
+          {passwordDisponible ? (
+            <p className="font-body text-xs text-text-muted text-center">
+              o con tu contraseña
+            </p>
+          ) : (
+            <p role="note" className="font-body text-xs text-text-muted">
+              Si Pocket ID no responde, entra con tu contraseña por el acceso de
+              emergencia (túnel SSH a la VPS).
+            </p>
+          )}
         </div>
       )}
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="email" className="font-body text-sm text-text-muted">
-            Email
-          </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            required
-            autoComplete="email"
-            className="px-3 py-2 bg-background border border-border rounded-[var(--radius-sm)] font-body text-sm text-text-primary focus:outline-none focus:border-primary-500"
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="password"
-            className="font-body text-sm text-text-muted"
+      {passwordDisponible && (
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="email"
+              className="font-body text-sm text-text-muted"
+            >
+              Email
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              required
+              autoComplete="email"
+              className="px-3 py-2 bg-background border border-border rounded-[var(--radius-sm)] font-body text-sm text-text-primary focus:outline-none focus:border-primary-500"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="password"
+              className="font-body text-sm text-text-muted"
+            >
+              Contraseña
+            </label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              required
+              autoComplete="current-password"
+              className="px-3 py-2 bg-background border border-border rounded-[var(--radius-sm)] font-body text-sm text-text-primary focus:outline-none focus:border-primary-500"
+            />
+          </div>
+          {error && (
+            <p role="alert" className="font-body text-sm text-state-error">
+              {error}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-2 px-4 py-2 bg-primary-500 text-white font-body text-sm font-medium rounded-[var(--radius-sm)] hover:bg-primary-600 disabled:opacity-50 transition-colors"
           >
-            Contraseña
-          </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            required
-            autoComplete="current-password"
-            className="px-3 py-2 bg-background border border-border rounded-[var(--radius-sm)] font-body text-sm text-text-primary focus:outline-none focus:border-primary-500"
-          />
-        </div>
-        {error && (
-          <p role="alert" className="font-body text-sm text-state-error">
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={loading}
-          className="mt-2 px-4 py-2 bg-primary-500 text-white font-body text-sm font-medium rounded-[var(--radius-sm)] hover:bg-primary-600 disabled:opacity-50 transition-colors"
-        >
-          {loading ? "Entrando…" : "Entrar"}
-        </button>
-      </form>
+            {loading ? "Entrando…" : "Entrar"}
+          </button>
+        </form>
+      )}
     </div>
   );
 }

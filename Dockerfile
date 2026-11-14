@@ -8,14 +8,16 @@ RUN npm install -g npm@11
 
 COPY package*.json ./
 COPY prisma ./prisma
-# npm install vs npm ci: @emnapi resolves to different versions on macOS vs Alpine,
-# so the macOS-generated lock file fails the sync check on Linux builds.
-RUN npm install --prefer-offline
+# npm ci: installs exactly what the lock file says, or fails. `npm install`
+# could resolve newer versions here than the ones tested in CI.
+RUN npm ci
 
 COPY . .
 RUN npx prisma generate
 ENV SKIP_ENV_VALIDATION=1
 RUN npm run build
+# The runner copies node_modules from here: leave only what runs in production.
+RUN npm prune --omit=dev
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM node:22-alpine AS runner

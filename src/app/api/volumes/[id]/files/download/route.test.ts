@@ -11,18 +11,30 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-vi.mock("node:fs/promises", () => ({ readFile: vi.fn() }));
-
-vi.mock("fflate", () => ({
-  zip: vi.fn((_files, cb) =>
-    cb(
-      null,
-      new Uint8Array([
-        80, 75, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      ]),
-    ),
-  ),
+const { contenidos, noFicheros, enlaces } = vi.hoisted(() => ({
+  contenidos: new Map<string, string[]>(),
+  noFicheros: new Set<string>(),
+  enlaces: new Set<string>(),
 }));
+const nombreDe = (ruta: unknown) => String(ruta).split(/[\\/]/).pop()!;
+
+vi.mock("node:fs/promises", () => ({
+  lstat: vi.fn(async (ruta: unknown) => ({
+    isSymbolicLink: () => enlaces.has(nombreDe(ruta)),
+    isFile: () => !noFicheros.has(nombreDe(ruta)),
+  })),
+}));
+// Each file arrives in several chunks, as a real read stream delivers it.
+vi.mock("node:fs", async () => {
+  const { Readable } = await import("node:stream");
+  return {
+    createReadStream: vi.fn((ruta: unknown) =>
+      Readable.from(
+        (contenidos.get(nombreDe(ruta)) ?? []).map((t) => Buffer.from(t)),
+      ),
+    ),
+  };
+});
 
 vi.mock("@/lib/volumenes", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/volumenes")>()),
@@ -33,7 +45,8 @@ vi.mock("@/lib/volumenes", async (importOriginal) => ({
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { readFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { strFromU8, unzipSync } from "fflate";
 import { GET } from "./route";
 
 const mockSession = {
@@ -98,16 +111,29 @@ describe("GET /api/volumes/[id]/files/download", () => {
     expect(res.status).toBe(400);
   });
 
-  it("genera ZIP y devuelve application/zip con nombre correcto", async () => {
+  const descargar = async (files: string) => {
     vi.mocked(auth).mockResolvedValue(mockSession as never);
     vi.mocked(prisma.volumen.findUnique).mockResolvedValue(
       mockVolumen as never,
     );
-    vi.mocked(readFile).mockResolvedValue(Buffer.from("contenido") as never);
-
-    const res = await GET(makeRequest({ files: "foto.jpg" }), {
+    const res = await GET(makeRequest({ files }), {
       params: Promise.resolve({ id: "v1" }),
     });
+    const zip = unzipSync(new Uint8Array(await res.arrayBuffer()));
+    return {
+      res,
+      entradas: Object.fromEntries(
+        Object.entries(zip).map(([nombre, datos]) => [
+          nombre,
+          strFromU8(datos),
+        ]),
+      ),
+    };
+  };
+
+  it("devuelve application/zip con el nombre del volumen", async () => {
+    contenidos.set("foto.jpg", ["contenido"]);
+    const { res } = await descargar("foto.jpg");
 
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("application/zip");
@@ -115,21 +141,37 @@ describe("GET /api/volumes/[id]/files/download", () => {
     expect(cd).toMatch(/attachment;\s*filename="galeria-\d+\.zip"/);
   });
 
-  it("incluye todos los ficheros solicitados en el ZIP", async () => {
-    vi.mocked(auth).mockResolvedValue(mockSession as never);
-    vi.mocked(prisma.volumen.findUnique).mockResolvedValue(
-      mockVolumen as never,
-    );
-    vi.mocked(readFile).mockResolvedValue(Buffer.from("datos") as never);
+  // Streamed chunk by chunk: a big file must never be held whole in memory.
+  it("el ZIP contiene cada fichero pedido, leído por trozos", async () => {
+    contenidos.set("a.jpg", ["primera parte, ", "segunda parte"]);
+    contenidos.set("b.png", ["datos"]);
 
-    const { zip } = await import("fflate");
-    await GET(makeRequest({ files: "a.jpg,b.png" }), {
-      params: Promise.resolve({ id: "v1" }),
+    const { entradas } = await descargar("a.jpg,b.png");
+
+    expect(entradas).toEqual({
+      "a.jpg": "primera parte, segunda parte",
+      "b.png": "datos",
     });
+  });
 
-    expect(zip).toHaveBeenCalledOnce();
-    const entradas = vi.mocked(zip).mock.calls[0][0] as Record<string, unknown>;
-    expect(Object.keys(entradas)).toContain("a.jpg");
-    expect(Object.keys(entradas)).toContain("b.png");
+  it("omite lo que no es un fichero (carpetas, nombres que no existen)", async () => {
+    contenidos.set("a.jpg", ["datos"]);
+    noFicheros.add("carpeta");
+
+    const { entradas } = await descargar("a.jpg,carpeta");
+
+    expect(Object.keys(entradas)).toEqual(["a.jpg"]);
+    noFicheros.clear();
+  });
+
+  it("no incluye un enlace simbólico: el contenedor podría apuntarlo fuera del volumen", async () => {
+    contenidos.set("a.jpg", ["datos"]);
+    enlaces.add("enlace");
+
+    const { entradas } = await descargar("a.jpg,enlace");
+
+    expect(Object.keys(entradas)).toEqual(["a.jpg"]);
+    expect(createReadStream).toHaveBeenCalledTimes(1);
+    enlaces.clear();
   });
 });

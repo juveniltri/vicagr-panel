@@ -8,8 +8,15 @@ import {
   ejecutarDeploy,
   limpiarDeploysHuerfanos,
 } from "@/lib/docker/deploys";
-import { prepararRepo } from "@/lib/docker/deploy";
-import { descifrar } from "@/lib/crypto";
+import {
+  borrarFicherosProyecto,
+  comandoSshGit,
+  prepararRepo,
+} from "@/lib/docker/deploy";
+import { desconectarTraefikDeRed } from "@/lib/docker/traefik";
+import { randomBytes } from "node:crypto";
+import { PLANTILLA_WORDPRESS } from "@/lib/compose";
+import { cifrar, descifrar } from "@/lib/crypto";
 import { env } from "@/env";
 import { rutaHostVolumen } from "@/lib/volumenes";
 import { TIMEOUT_DEPLOY_POR_DEFECTO } from "@/server/routers/configuracion";
@@ -17,6 +24,7 @@ import { descifrarClavePrivada } from "@/server/routers/credenciales";
 import {
   DockerError,
   detenerProyecto,
+  eliminarContenedoresProyecto,
   estadoContenedores,
   iniciarProyecto,
   listarServicios,
@@ -55,6 +63,8 @@ const proyectoInput = z.object({
   dockerfilePath: z.string().optional(),
   buildCommand: z.string().optional(),
   startCommand: z.string().optional(),
+  limiteMemoriaMb: z.number().int().min(64).max(1_048_576).optional(),
+  limiteCpus: z.number().min(0.1).max(256).optional(),
 });
 
 const idInput = z.object({ id: z.string() });
@@ -93,6 +103,28 @@ const dominioPrincipal = (p: { rutas?: { dominio: string }[] }) =>
   p.rutas?.[0]?.dominio ?? null;
 
 type ProyectoConCliente = Awaited<ReturnType<typeof findProyectoOrThrow>>;
+
+// Docker only sees "<cliente>-<proyecto>". The Cliente "a-b" with the Proyecto
+// "c" and the Cliente "a" with the Proyecto "b-c" are one name there: start,
+// stop, logs and restores of one would act on the other's containers.
+async function rechazarSiNombreColisiona(
+  clienteSlug: string,
+  nombre: string,
+  exceptoId?: string,
+): Promise<void> {
+  const otros = await prisma.proyecto.findMany({
+    where: exceptoId ? { id: { not: exceptoId } } : undefined,
+    select: { nombre: true, cliente: { select: { slug: true } } },
+  });
+  const igual = otros.find(
+    (o) => `${o.cliente.slug}-${o.nombre}` === `${clienteSlug}-${nombre}`,
+  );
+  if (igual)
+    throw new TRPCError({
+      code: "CONFLICT",
+      message: `Ese nombre coincide en Docker con el Proyecto «${igual.nombre}» del Cliente «${igual.cliente.slug}». Elige otro.`,
+    });
+}
 
 function rechazarSiRestaurando(proyectoId: string): void {
   if (estaRestaurando(proyectoId))
@@ -178,6 +210,10 @@ export async function lanzarDeploy(
     startCommand: proyecto.startCommand,
     puerto: proyecto.puerto,
     volumenes,
+    limites: {
+      memoriaMb: proyecto.limiteMemoriaMb,
+      cpus: proyecto.limiteCpus,
+    },
     serviciosConRuta: [
       ...new Set(
         proyecto.rutas.flatMap((r) => (r.servicio ? [r.servicio] : [])),
@@ -300,6 +336,8 @@ export const proyectosRouter = router({
       dockerfilePath: proyecto.dockerfilePath,
       buildCommand: proyecto.buildCommand,
       startCommand: proyecto.startCommand,
+      limiteMemoriaMb: proyecto.limiteMemoriaMb,
+      limiteCpus: proyecto.limiteCpus,
       composeContent: proyecto.composeContent ?? null,
       ultimoDeploy:
         proyecto.ultimoDeployEn && proyecto.ultimoDeployRama
@@ -395,6 +433,8 @@ export const proyectosRouter = router({
         clienteId: z.string(),
         // Shortcut for the first route; the rest live in the Dominios tab.
         dominio: dominioSchema.optional(),
+        // Starts the Proyecto from a ready-made compose and its variables.
+        plantilla: z.enum(["wordpress"]).optional(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -406,12 +446,19 @@ export const proyectosRouter = router({
           code: "NOT_FOUND",
           message: "Cliente no encontrado",
         });
+      await rechazarSiNombreColisiona(cliente.slug, input.nombre);
       if (input.dominio)
         await comprobarRutaDisponible({
           dominio: input.dominio,
           path: "",
           redireccionWww: "ninguna",
         });
+      const wordpress = input.plantilla === "wordpress";
+      // Hex, so the value can be dropped into the compose as it is.
+      const secreto = (clave: string) => ({
+        clave,
+        ...cifrar(randomBytes(24).toString("hex")),
+      });
       const creado = await prisma.proyecto.create({
         data: {
           nombre: input.nombre,
@@ -421,10 +468,16 @@ export const proyectosRouter = router({
               create: { dominio: input.dominio, puerto: input.puerto ?? 80 },
             },
           }),
+          ...(wordpress && {
+            composeContent: PLANTILLA_WORDPRESS,
+            variables: {
+              create: [secreto("DB_PASSWORD"), secreto("DB_ROOT_PASSWORD")],
+            },
+          }),
           repositorioUrl: input.repositorioUrl,
           rama: input.rama ?? "main",
-          tipo: input.tipo ?? "compose",
-          puerto: input.puerto,
+          tipo: wordpress ? "compose" : (input.tipo ?? "compose"),
+          puerto: wordpress ? 80 : input.puerto,
           imagenUrl: input.imagenUrl,
           dockerfilePath: input.dockerfilePath,
           buildCommand: input.buildCommand,
@@ -451,6 +504,12 @@ export const proyectosRouter = router({
           code: "CONFLICT",
           message: "No se puede renombrar un proyecto en ejecución",
         });
+      if (input.nombre !== proyecto.nombre)
+        await rechazarSiNombreColisiona(
+          proyecto.cliente.slug,
+          input.nombre,
+          proyecto.id,
+        );
 
       const actualizado = await prisma.proyecto.update({
         where: { id: input.id },
@@ -464,6 +523,8 @@ export const proyectosRouter = router({
           dockerfilePath: input.dockerfilePath,
           buildCommand: input.buildCommand,
           startCommand: input.startCommand,
+          limiteMemoriaMb: input.limiteMemoriaMb,
+          limiteCpus: input.limiteCpus,
         },
         include: { cliente: true },
       });
@@ -486,7 +547,13 @@ export const proyectosRouter = router({
     }),
 
   eliminar: protectedProcedure
-    .input(idInput.extend({ borrarCopias: z.boolean().optional() }))
+    .input(
+      idInput.extend({
+        borrarCopias: z.boolean().optional(),
+        // Also its clone, the data inside it and its named volumes.
+        borrarDatos: z.boolean().optional(),
+      }),
+    )
     .mutation(async ({ input }) => {
       const proyecto = await findProyectoOrThrow(input.id);
       rechazarSiRestaurando(proyecto.id);
@@ -501,14 +568,24 @@ export const proyectosRouter = router({
           message:
             "Hay una copia o restauración en curso: inténtalo cuando termine",
         });
+      const { slug } = proyecto.cliente;
+      const borrarDatos = input.borrarDatos ?? false;
+      // Before the row goes: if Docker refuses, the Proyecto is still in the
+      // Panel to try again, instead of leaving containers nobody can stop.
+      await eliminarContenedoresProyecto(slug, proyecto.nombre, {
+        volumenes: borrarDatos,
+      });
       await prisma.proyecto.delete({ where: { id: input.id } });
+      await borrarFicherosProyecto(slug, proyecto.nombre, borrarDatos);
       if (proyecto.rutas.length > 0)
         await sincronizarTraefikCliente(proyecto.clienteId);
       const restantes = await prisma.proyecto.count({
         where: { clienteId: proyecto.clienteId },
       });
       if (restantes === 0) {
-        await eliminarRedCliente(proyecto.cliente.slug);
+        // Docker refuses to remove a network Traefik is still attached to.
+        await desconectarTraefikDeRed(slug);
+        await eliminarRedCliente(slug);
       }
       // Last, so an unexpected error here cannot skip the cleanup above.
       if (input.borrarCopias) {
@@ -876,7 +953,7 @@ export const proyectosRouter = router({
         await writeFile(keyFilePath, normalizedKey, { mode: 0o600 });
         gitEnv = {
           ...process.env,
-          GIT_SSH_COMMAND: `ssh -i ${keyFilePath} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`,
+          GIT_SSH_COMMAND: comandoSshGit(keyFilePath),
         };
         effectiveRepoUrl = repositorioUrl.replace(
           /^https:\/\/github\.com\/(.+?)(?:\.git)?$/,
