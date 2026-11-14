@@ -18,9 +18,15 @@ type Volumen = {
 export function VolumenesPanel({
   proyectoId,
   volumenesIniciales,
+  ultimoDeployEn = null,
+  esCompose = false,
 }: {
   proyectoId: string;
   volumenesIniciales: Volumen[];
+  // Last successful deploy: a volume created after it is not mounted yet.
+  ultimoDeployEn?: Date | null;
+  // The Panel only mounts its volumes in the composes it generates.
+  esCompose?: boolean;
 }) {
   const router = useRouter();
   const [showAddForm, setShowAddForm] = useState(false);
@@ -89,6 +95,12 @@ export function VolumenesPanel({
                 >
                   <td className="px-4 py-3 font-mono text-sm text-text-primary">
                     {v.nombre}
+                    {!esCompose &&
+                      (!ultimoDeployEn || v.creadoEn > ultimoDeployEn) && (
+                        <span className="ml-2 font-body text-xs text-state-deploying">
+                          Pendiente de deploy
+                        </span>
+                      )}
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-text-muted">
                     {v.rutaContenedor}
@@ -149,7 +161,12 @@ export function VolumenesPanel({
         </p>
       )}
 
-      {showAddForm ? (
+      {esCompose ? (
+        <p role="note" className="font-body text-xs text-text-muted">
+          En un Proyecto de tipo compose los volúmenes se declaran en el propio
+          docker-compose.yml: los que se crean aquí no se montan.
+        </p>
+      ) : showAddForm ? (
         <form
           onSubmit={handleCrear}
           className="flex flex-col gap-3 border border-border rounded-[var(--radius-md)] p-4"
@@ -190,6 +207,11 @@ export function VolumenesPanel({
               className="font-mono text-sm text-text-primary bg-background border border-border rounded-[var(--radius-sm)] px-2 py-1"
             />
           </div>
+          <p role="note" className="font-body text-xs text-text-muted">
+            El volumen se monta en el próximo deploy; Reiniciar no basta. Si el
+            contenedor ya tiene ficheros en esa ruta, se copian al volumen en
+            ese deploy.
+          </p>
           <div className="flex gap-2">
             <Btn primary disabled={loading} aria-label="Guardar volumen">
               {loading ? "…" : "Guardar"}

@@ -550,7 +550,14 @@ export default async function DetalleProyectoPage({
 
       {pestana === "volumenes" && (
         <Card titulo="Volúmenes">
-          <VolumenesPanel proyectoId={id} volumenesIniciales={volumenes} />
+          <VolumenesPanel
+            proyectoId={id}
+            volumenesIniciales={volumenes}
+            ultimoDeployEn={
+              deploys.find((d) => d.resultado === "exito")?.iniciadoEn ?? null
+            }
+            esCompose={proyecto.tipo === "compose"}
+          />
         </Card>
       )}
 
@@ -594,6 +601,8 @@ export default async function DetalleProyectoPage({
                   dockerfilePath: proyecto.dockerfilePath,
                   buildCommand: proyecto.buildCommand,
                   startCommand: proyecto.startCommand,
+                  limiteMemoriaMb: proyecto.limiteMemoriaMb,
+                  limiteCpus: proyecto.limiteCpus,
                 }}
               />
             }

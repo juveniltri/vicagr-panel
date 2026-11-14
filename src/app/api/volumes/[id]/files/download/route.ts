@@ -1,10 +1,11 @@
-import { readFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { type NextRequest } from "next/server";
-import { zip } from "fflate";
+import { Zip, ZipPassThrough } from "fflate";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
-import { resolverRutaSegura, rutaHostVolumen } from "@/lib/volumenes";
+import { resolverRutaSinEnlaces, rutaHostVolumen } from "@/lib/volumenes";
 import { prisma } from "@/lib/prisma";
 
 async function resolveVolumen(id: string) {
@@ -14,12 +15,44 @@ async function resolveVolumen(id: string) {
   });
 }
 
-function zipAsync(entradas: Record<string, Uint8Array>): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    zip(entradas, (err, data) => {
-      if (err) reject(err);
-      else resolve(data);
+// Built as it is read: a volume can hold files far bigger than the Panel's
+// memory. Stored without compression, which is what media mostly is anyway.
+function zipEnStreaming(
+  ficheros: Array<{ nombre: string; ruta: string }>,
+): ReadableStream<Uint8Array> {
+  async function* trozos() {
+    let salida: Uint8Array[] = [];
+    const vaciar = () => {
+      const pendientes = salida;
+      salida = [];
+      return pendientes;
+    };
+    const zip = new Zip((err, trozo) => {
+      if (err) throw err;
+      salida.push(trozo);
     });
+    for (const { nombre, ruta } of ficheros) {
+      const entrada = new ZipPassThrough(nombre);
+      zip.add(entrada);
+      for await (const trozo of createReadStream(ruta)) {
+        entrada.push(trozo as Buffer);
+        yield* vaciar();
+      }
+      entrada.push(new Uint8Array(0), true);
+    }
+    zip.end();
+    yield* vaciar();
+  }
+  const iterador = trozos();
+  return new ReadableStream<Uint8Array>({
+    async pull(controlador) {
+      const { done, value } = await iterador.next();
+      if (done) controlador.close();
+      else controlador.enqueue(value);
+    },
+    cancel() {
+      void iterador.return(undefined);
+    },
   });
 }
 
@@ -45,7 +78,7 @@ export async function GET(
   );
 
   const subpath = req.nextUrl.searchParams.get("path") ?? "";
-  const dir = resolverRutaSegura(base, subpath);
+  const dir = await resolverRutaSinEnlaces(base, subpath);
   if (!dir) return new Response("Invalid path", { status: 400 });
 
   const nombres = filesParam
@@ -53,24 +86,22 @@ export async function GET(
     .map((f) => f.trim())
     .filter(Boolean);
 
-  const entradas: Record<string, Uint8Array> = {};
+  const ficheros: Array<{ nombre: string; ruta: string }> = [];
   for (const nombre of nombres) {
     const safeName = path.basename(nombre);
-    const filePath = resolverRutaSegura(dir, safeName, { permitirRaiz: false });
-    if (!filePath) continue;
-    try {
-      const data = await readFile(filePath);
-      entradas[safeName] = new Uint8Array(data);
-    } catch {
-      // skip missing files
-    }
+    const ruta = await resolverRutaSinEnlaces(dir, safeName, {
+      permitirRaiz: false,
+    });
+    if (!ruta) continue;
+    // Folders and names that are not there are left out.
+    const info = await lstat(ruta).catch(() => null);
+    if (info?.isFile()) ficheros.push({ nombre: safeName, ruta });
   }
 
-  const zipData = await zipAsync(entradas);
   const timestamp = Date.now();
   const filename = `${volumen.nombre}-${timestamp}.zip`;
 
-  return new Response(Buffer.from(zipData), {
+  return new Response(zipEnStreaming(ficheros), {
     status: 200,
     headers: {
       "Content-Type": "application/zip",

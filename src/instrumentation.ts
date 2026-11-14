@@ -74,4 +74,7 @@ export async function register() {
     log.error({ err }, "No se pudieron eliminar los contenedores auxiliares");
   }
   iniciarProgramador();
+
+  const { iniciarVigilancia } = await import("@/lib/vigilancia");
+  iniciarVigilancia();
 }

@@ -280,3 +280,61 @@ describe("ExploradorVolumenModal — eliminar", () => {
     );
   });
 });
+
+describe("ExploradorVolumenModal — subir", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const abrir = async () => {
+    mockFetch(mockFicheros);
+    render(
+      <ExploradorVolumenModal
+        volumen={mockVolumen}
+        open={true}
+        onClose={vi.fn()}
+      />,
+    );
+    await waitFor(() => screen.getByText(/banner\.png/));
+  };
+
+  // One request per file with the file as the body: the server streams it to
+  // disk instead of holding a multipart form in memory.
+  it("sube cada fichero en su propia petición, con el fichero como cuerpo", async () => {
+    await abrir();
+    const a = new File(["a"], "a b.txt");
+    const b = new File(["b"], "b.txt");
+    mockFetch({ nombre: "a b.txt" });
+    mockFetch({ nombre: "b.txt" });
+    mockFetch(mockFicheros);
+
+    fireEvent.change(screen.getByLabelText("Subir ficheros"), {
+      target: { files: [a, b] },
+    });
+
+    await waitFor(() =>
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/volumes/v1/files?nombre=b.txt",
+        { method: "POST", body: b },
+      ),
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/volumes/v1/files?nombre=a+b.txt",
+      { method: "POST", body: a },
+    );
+  });
+
+  it("muestra el motivo si el servidor rechaza un fichero", async () => {
+    await abrir();
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 413,
+      text: async () => "El fichero supera el máximo de 2 GB",
+    } as Response);
+    mockFetch(mockFicheros);
+
+    fireEvent.change(screen.getByLabelText("Subir ficheros"), {
+      target: { files: [new File(["a"], "grande.bin")] },
+    });
+
+    expect(await screen.findByText(/supera el máximo de 2 GB/)).toBeVisible();
+  });
+});

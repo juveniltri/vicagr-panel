@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 type Fichero = {
   nombre: string;
-  tipo: "file" | "dir";
+  tipo: "file" | "dir" | "enlace";
   tamaño: number | null;
   modificadoEn: string | null;
 };
@@ -85,22 +85,30 @@ export function ExploradorVolumenModal({
 
   async function handleSubir(files: FileList) {
     setUploading(true);
-    setError(null);
-    const form = new FormData();
-    Array.from(files).forEach((f) => form.append("file", f));
-    const url = `/api/volumes/${volumen.id}/files${ruta ? `?path=${encodeURIComponent(ruta)}` : ""}`;
+    let fallo: string | null = null;
     try {
-      const res = await fetch(url, { method: "POST", body: form });
-      if (!res.ok) {
-        const msg = await res.text();
-        throw new Error(msg || `Error ${res.status} al subir fichero`);
+      // One request per file, the file as the body: the server streams it.
+      for (const fichero of Array.from(files)) {
+        const params = new URLSearchParams();
+        if (ruta) params.set("path", ruta);
+        params.set("nombre", fichero.name);
+        const res = await fetch(`/api/volumes/${volumen.id}/files?${params}`, {
+          method: "POST",
+          body: fichero,
+        });
+        if (!res.ok) {
+          const msg = await res.text();
+          throw new Error(msg || `Error ${res.status} al subir fichero`);
+        }
       }
-      await cargarFicheros(ruta);
     } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setUploading(false);
+      fallo = (e as Error).message;
     }
+    // Also after a failure: the files before the rejected one are in. The
+    // reload clears the error, so it is set afterwards.
+    await cargarFicheros(ruta);
+    if (fallo) setError(fallo);
+    setUploading(false);
   }
 
   function toggleSeleccion(nombre: string) {
@@ -330,7 +338,12 @@ export function ExploradorVolumenModal({
                         </button>
                       ) : (
                         <span className="font-mono text-xs text-text-primary flex items-center gap-1">
-                          📄 {f.nombre}
+                          {f.tipo === "enlace" ? "🔗" : "📄"} {f.nombre}
+                          {f.tipo === "enlace" && (
+                            <span className="font-body text-text-muted">
+                              (enlace: no se abre ni se descarga)
+                            </span>
+                          )}
                         </span>
                       )}
                     </td>

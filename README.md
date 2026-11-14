@@ -141,12 +141,12 @@ docker compose up -d --build
 
 ### REST
 
-| Endpoint                  | Método | Descripción                                       |
-| ------------------------- | ------ | ------------------------------------------------- |
-| `/api/health`             | GET    | Estado del sistema (DB + Docker daemon + versión) |
-| `/api/projects/[id]/logs` | GET    | SSE — stream de logs del proyecto                 |
-| `/api/system/metrics`     | GET    | CPU, RAM y disco del host                         |
-| `/api/webhooks/github`    | POST   | Receptor de webhooks GitHub (HMAC-SHA256)         |
+| Endpoint                  | Método | Descripción                                  |
+| ------------------------- | ------ | -------------------------------------------- |
+| `/api/health`             | GET    | Estado global; con sesión, detalle y versión |
+| `/api/projects/[id]/logs` | GET    | SSE — stream de logs del proyecto            |
+| `/api/system/metrics`     | GET    | CPU, RAM y disco del host                    |
+| `/api/webhooks/github`    | POST   | Receptor de webhooks GitHub (HMAC-SHA256)    |
 
 ### tRPC
 
