@@ -273,6 +273,14 @@ Después, redespliega los Proyectos cuyas variables contengan `$`, `#`, comillas
 Proyectos de compose pegado dejan de usar `/var/vicagr/repos/<cliente>/.panel/.env`: el Panel lo
 borra en el primer deploy y cada Proyecto pasa a `<proyecto>.env` en esa misma carpeta.
 
+Comprueba después de actualizar:
+
+- **Login con Pocket ID**: la cookie de sesión es ahora `SameSite=Strict`. Entra una vez con Pocket ID
+  y confirma que acabas en el Dashboard (se ve un instante la pantalla de login). Si se queda en el
+  login, entra con contraseña y avisa: el acceso de emergencia de § D sigue funcionando.
+- **Volúmenes**: un volumen vacío se rellena en el siguiente deploy con lo que el contenedor tenía en
+  esa ruta. El Panel usa para ello la imagen `busybox:1.37.0`, la misma que los backups de Proyectos.
+
 ### B1a. Renombrado `vicalba` → `vicagr` (versión 3.0.0)
 
 Cambian `/var/vicalba` → `/var/vicagr`, la red `vicalba-net` → `vicagr-net`, los contenedores

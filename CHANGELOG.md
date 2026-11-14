@@ -7,8 +7,8 @@ Correcciones y Seguridad.
 
 ## [3.0.1] - 2026-11-14
 
-Las variables con caracteres especiales llegan intactas a los contenedores y el gestor de ficheros
-deja de seguir enlaces simbólicos.
+Correcciones de la auditoría de noviembre: variables con caracteres especiales, volúmenes que
+perdían ficheros, gestor de ficheros y sesión.
 
 ### Correcciones
 
@@ -18,8 +18,20 @@ deja de seguir enlaces simbólicos.
 - **Proyectos de compose pegado de un mismo Cliente**: compartían un fichero de variables y el
   último deploy pisaba las del otro. Cada Proyecto usa ya el suyo.
 
+- **Volúmenes nuevos**: al crear un volumen sobre una ruta que ya tenía ficheros en el contenedor
+  (subidas, temas, plugins), esos ficheros se perdían en el siguiente deploy. Ahora se copian al
+  volumen antes de recrear el contenedor, con su propietario y permisos; si la copia falla, el deploy
+  se detiene sin tocar nada.
+- **Volúmenes → aviso**: al crear uno se indica que no se monta hasta el próximo deploy (Reiniciar no
+  basta) y queda marcado «Pendiente de deploy». En los Proyectos de tipo compose se explica que los
+  volúmenes se declaran en su `docker-compose.yml`.
+- **Gestor de ficheros**: subir o descargar ficheros grandes ya no deja al Panel sin memoria. Máximo
+  de 2 GB por fichero subido; para más, usa SFTP.
+
 ### Seguridad
 
+- **Sesión**: la cookie pasa a `SameSite=Strict` y el login limita los intentos también por cuenta
+  (10 en 15 minutos), no solo por IP.
 - **Gestor de ficheros**: un contenedor podía dejar en su Volumen un enlace simbólico a ficheros
   de otro Cliente o de la VPS y el Panel lo seguía al listar, descargar, subir o borrar. Los enlaces
   se muestran como enlaces y no se abren ni se descargan; borrarlos elimina solo el enlace.
@@ -33,6 +45,9 @@ deja de seguir enlaces simbólicos.
   `$` ya no se transforma y llega literal. Escribe el valor final.
 - Redespliega los Proyectos con variables que contengan `$`, `#`, comillas o espacios para que
   reciban el valor correcto. Detalle en `production.md` § B1b.
+- Al abrir el Panel desde un enlace externo (un email, GitHub) verás un instante la pantalla de
+  login antes de entrar: es el efecto de la cookie `SameSite=Strict`.
+- Comprueba una vez el login con Pocket ID tras actualizar.
 
 ## [3.0.0] - 2026-11-05
 
