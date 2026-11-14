@@ -37,6 +37,13 @@ function substituirVarsEnCompose(
   );
 }
 
+// Host keys are remembered (trust on first use): the first connection stores
+// the key and a different one later makes git fail. With /dev/null as
+// known_hosts every connection accepted whatever server answered.
+export function comandoSshGit(keyFilePath: string): string {
+  return `ssh -i ${keyFilePath} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=${env.REPOS_DIR}/.git-known_hosts`;
+}
+
 export async function ensureRepo(
   repoUrl: string,
   repoDir: string,
@@ -665,7 +672,7 @@ export async function deployProyecto(params: {
   const gitEnv: NodeJS.ProcessEnv = credencial
     ? {
         ...process.env,
-        GIT_SSH_COMMAND: `ssh -i ${keyFilePath} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`,
+        GIT_SSH_COMMAND: comandoSshGit(keyFilePath),
       }
     : { ...process.env };
 

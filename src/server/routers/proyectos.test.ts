@@ -72,6 +72,7 @@ vi.mock("@/lib/docker/deploys", () => ({
 
 vi.mock("@/lib/docker/deploy", () => ({
   prepararRepo: vi.fn().mockResolvedValue(undefined),
+  comandoSshGit: (clave: string) => `ssh -i ${clave}`,
 }));
 
 vi.mock("node:fs/promises", () => ({

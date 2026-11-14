@@ -8,7 +8,7 @@ import {
   ejecutarDeploy,
   limpiarDeploysHuerfanos,
 } from "@/lib/docker/deploys";
-import { prepararRepo } from "@/lib/docker/deploy";
+import { comandoSshGit, prepararRepo } from "@/lib/docker/deploy";
 import { descifrar } from "@/lib/crypto";
 import { env } from "@/env";
 import { rutaHostVolumen } from "@/lib/volumenes";
@@ -915,7 +915,7 @@ export const proyectosRouter = router({
         await writeFile(keyFilePath, normalizedKey, { mode: 0o600 });
         gitEnv = {
           ...process.env,
-          GIT_SSH_COMMAND: `ssh -i ${keyFilePath} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`,
+          GIT_SSH_COMMAND: comandoSshGit(keyFilePath),
         };
         effectiveRepoUrl = repositorioUrl.replace(
           /^https:\/\/github\.com\/(.+?)(?:\.git)?$/,

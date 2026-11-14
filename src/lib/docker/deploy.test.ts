@@ -558,6 +558,24 @@ describe("deployProyecto con credencial SSH", () => {
 
   const keyFilePath = "/var/vicagr/repos/acme/.panel/web-app.deploy_key";
 
+  // With /dev/null as known_hosts every connection accepted whatever server
+  // answered, so someone in the middle could serve other code.
+  it("git por SSH recuerda la clave del host: la primera vez la guarda y después exige la misma", async () => {
+    await deployProyecto({
+      ...baseParams,
+      credencial: { clavePrivada: "clave" },
+    });
+
+    const sshDeGit = mockExecFileOpts.mock.calls
+      .map(([, , opts]) => (opts as { env?: NodeJS.ProcessEnv })?.env)
+      .find((env) => env?.GIT_SSH_COMMAND)?.GIT_SSH_COMMAND;
+    expect(sshDeGit).toContain("-o StrictHostKeyChecking=accept-new");
+    expect(sshDeGit).toContain(
+      "-o UserKnownHostsFile=/var/vicagr/repos/.git-known_hosts",
+    );
+    expect(sshDeGit).not.toContain("/dev/null");
+  });
+
   it("escribe la clave privada en .deploy_key con permisos 0o600", async () => {
     await deployProyecto({
       ...baseParams,
