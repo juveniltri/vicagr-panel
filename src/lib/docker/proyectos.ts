@@ -238,3 +238,32 @@ async function streamContainerLogs(
     });
   });
 }
+
+// Deleting a Proyecto in the Panel used to leave its containers behind, with
+// nothing in the Panel left to stop them. Named volumes hold the Proyecto's
+// data, so they only go when asked for.
+export async function eliminarContenedoresProyecto(
+  clienteSlug: string,
+  proyectoNombre: string,
+  { volumenes = false }: { volumenes?: boolean } = {},
+): Promise<void> {
+  const label = [
+    `com.docker.compose.project=${projectSlug(clienteSlug, proyectoNombre)}`,
+  ];
+  try {
+    for (const c of await docker.listContainers({
+      all: true,
+      filters: { label },
+    }))
+      await docker.getContainer(c.Id).remove({ force: true });
+    // The default network Compose created for it; the Cliente's own stays.
+    for (const red of await docker.listNetworks({ filters: { label } }))
+      await docker.getNetwork(red.Id).remove();
+    if (!volumenes) return;
+    const { Volumes } = await docker.listVolumes({ filters: { label } });
+    for (const v of Volumes ?? []) await docker.getVolume(v.Name).remove();
+  } catch (err) {
+    // Without Docker (local development) there is nothing to remove.
+    if (process.env.NODE_ENV === "production") handleDockerError(err);
+  }
+}

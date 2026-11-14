@@ -445,10 +445,15 @@ export function EliminarProyectoButton({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [borrarCopias, setBorrarCopias] = useState(false);
+  const [borrarDatos, setBorrarDatos] = useState(false);
 
   async function handleEliminar() {
     setLoading(true);
-    const result = await eliminarProyectoAction(proyectoId, borrarCopias);
+    const result = await eliminarProyectoAction(
+      proyectoId,
+      borrarCopias,
+      borrarDatos,
+    );
     if (result?.error) {
       setError(result.error);
       setLoading(false);
@@ -470,6 +475,14 @@ export function EliminarProyectoButton({
             onChange={(e) => setBorrarCopias(e.target.checked)}
           />
           Borrar también sus copias ahora
+        </label>
+        <label className="flex items-center gap-1.5 font-body text-xs text-text-secondary">
+          <input
+            type="checkbox"
+            checked={borrarDatos}
+            onChange={(e) => setBorrarDatos(e.target.checked)}
+          />
+          Borrar también sus datos de la VPS (volúmenes y carpeta)
         </label>
         <button
           onClick={handleEliminar}

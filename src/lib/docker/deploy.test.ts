@@ -104,7 +104,11 @@ vi.mock("dockerode", () => ({
 }));
 
 import { ErrorProceso } from "@/lib/backups/procesos";
-import { deployProyecto, TIEMPOS_SALUD } from "./deploy";
+import {
+  borrarFicherosProyecto,
+  deployProyecto,
+  TIEMPOS_SALUD,
+} from "./deploy";
 
 // No waiting in tests; the ones about the wait set their own times.
 const sinEspera = { observacionMs: 0, intervaloMs: 0, maximoMs: 1000 };
@@ -1619,5 +1623,59 @@ describe("deployProyecto — Volúmenes dentro del clon", () => {
     await deployProyecto({ ...baseParams, tipo: "dockerfile" });
 
     expect(escritos(ignorePropio)).toBeUndefined();
+  });
+});
+
+describe("borrarFicherosProyecto", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUnlink.mockResolvedValue(undefined);
+    mockEjecutar.mockResolvedValue("");
+  });
+
+  it("borra siempre los ficheros con las variables descifradas y los que generó el Panel", async () => {
+    await borrarFicherosProyecto("acme", "web-app", false);
+
+    const borrados = mockUnlink.mock.calls.map(([ruta]) => ruta);
+    expect(borrados).toEqual(
+      expect.arrayContaining([
+        "/var/vicagr/repos/acme/web-app/.env",
+        "/var/vicagr/repos/acme/web-app/.env.local",
+        "/var/vicagr/repos/acme/.panel/web-app.env",
+        "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+        "/var/vicagr/repos/acme/.panel/web-app.deploy_key",
+      ]),
+    );
+  });
+
+  it("sin pedirlo no borra la carpeta del Proyecto, que guarda sus datos", async () => {
+    await borrarFicherosProyecto("acme", "web-app", false);
+
+    expect(mockEjecutar).not.toHaveBeenCalled();
+  });
+
+  it("con borrarDatos borra la carpeta del Proyecto como root, solo la suya", async () => {
+    await borrarFicherosProyecto("acme", "web-app", true);
+
+    expect(mockEjecutar).toHaveBeenCalledWith(
+      "docker",
+      expect.arrayContaining([
+        "-v",
+        "/var/vicagr/repos/acme:/destino",
+        "rm",
+        "-rf",
+        "/destino/web-app",
+      ]),
+      expect.anything(),
+    );
+  });
+
+  it("que falte un fichero o falle el borrado no impide eliminar el Proyecto", async () => {
+    mockUnlink.mockRejectedValue(new Error("ENOENT"));
+    mockEjecutar.mockRejectedValue(new Error("docker"));
+
+    await expect(
+      borrarFicherosProyecto("acme", "web-app", true),
+    ).resolves.toBeUndefined();
   });
 });

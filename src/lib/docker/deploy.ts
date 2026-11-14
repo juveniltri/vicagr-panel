@@ -956,3 +956,39 @@ export async function deployProyecto(params: {
     }
   }
 }
+
+// What a Proyecto leaves on the VPS once it is gone from the Panel. Always:
+// the files with its decrypted variables and the ones the Panel generated.
+// Its clone and the data in it (Volúmenes, ./data folders) only when asked.
+export async function borrarFicherosProyecto(
+  clienteSlug: string,
+  proyectoNombre: string,
+  borrarDatos: boolean,
+): Promise<void> {
+  const clienteDir = `${env.REPOS_DIR}/${clienteSlug}`;
+  const repoDir = `${clienteDir}/${proyectoNombre}`;
+  const generado = `${clienteDir}/.panel/${proyectoNombre}`;
+  await Promise.all(
+    [
+      `${repoDir}/.env`,
+      `${repoDir}/.env.local`,
+      `${generado}.env`,
+      `${generado}.docker-compose.yml`,
+      `${generado}.logging.yml`,
+      `${generado}.Dockerfile`,
+      `${generado}.Dockerfile.dockerignore`,
+      `${generado}.deploy_key`,
+    ].map((ruta) => unlink(ruta).catch(() => {})),
+  );
+  if (!borrarDatos) return;
+  // As root in a helper container: the data belongs to the containers' users.
+  const borrar = enVolumen(
+    clienteDir,
+    "rm",
+    "-rf",
+    `/destino/${proyectoNombre}`,
+  );
+  await ejecutar(borrar.comando, borrar.args, {}).catch((err: unknown) =>
+    log.warn({ err, repoDir }, "No se pudo borrar la carpeta del Proyecto"),
+  );
+}

@@ -47,6 +47,7 @@ vi.mock("@/lib/docker/proyectos", () => ({
   detenerProyecto: vi.fn(),
   restartProyecto: vi.fn(),
   listarServicios: vi.fn(),
+  eliminarContenedoresProyecto: vi.fn().mockResolvedValue(undefined),
   estadoContenedores: vi.fn().mockResolvedValue("running"),
   DockerError: class DockerError extends Error {
     constructor(
@@ -73,6 +74,7 @@ vi.mock("@/lib/docker/deploys", () => ({
 vi.mock("@/lib/docker/deploy", () => ({
   prepararRepo: vi.fn().mockResolvedValue(undefined),
   comandoSshGit: (clave: string) => `ssh -i ${clave}`,
+  borrarFicherosProyecto: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("node:fs/promises", () => ({
@@ -150,7 +152,9 @@ import {
   ejecutarDeploy,
   limpiarDeploysHuerfanos,
 } from "@/lib/docker/deploys";
-import { prepararRepo } from "@/lib/docker/deploy";
+import { borrarFicherosProyecto, prepararRepo } from "@/lib/docker/deploy";
+import { eliminarContenedoresProyecto } from "@/lib/docker/proyectos";
+import { desconectarTraefikDeRed } from "@/lib/docker/traefik";
 import { readFile } from "node:fs/promises";
 import { asegurarRedCliente, eliminarRedCliente } from "@/lib/docker/networks";
 import { descifrar } from "@/lib/crypto";
@@ -3307,5 +3311,82 @@ describe("proyectos — nombres que Docker vería como el mismo", () => {
       vi.mocked(prisma.proyecto.findMany).mock.calls.at(-1)?.[0]?.where,
     ).toEqual({ id: { not: "p9" } });
     expect(prisma.proyecto.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("proyectos.eliminar — lo que deja en la VPS", () => {
+  const parado = {
+    ...mockProyecto,
+    estado: "stopped" as const,
+    rutas: [],
+    cliente: mockClienteRow,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(estaRestaurando).mockReturnValue(false);
+    vi.mocked(prisma.proyecto.findUnique).mockReset();
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(parado as never);
+    vi.mocked(prisma.proyecto.delete).mockResolvedValue(parado as never);
+    vi.mocked(prisma.proyecto.count).mockResolvedValue(1);
+    vi.mocked(eliminarContenedoresProyecto).mockResolvedValue(undefined);
+  });
+
+  it("borra sus contenedores y sus ficheros de variables, pero no sus datos", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
+
+    expect(eliminarContenedoresProyecto).toHaveBeenCalledWith(
+      mockClienteRow.slug,
+      parado.nombre,
+      { volumenes: false },
+    );
+    expect(borrarFicherosProyecto).toHaveBeenCalledWith(
+      mockClienteRow.slug,
+      parado.nombre,
+      false,
+    );
+  });
+
+  it("con borrarDatos borra también la carpeta del Proyecto y sus volúmenes", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.eliminar({ id: "p1", borrarDatos: true });
+
+    expect(eliminarContenedoresProyecto).toHaveBeenCalledWith(
+      mockClienteRow.slug,
+      parado.nombre,
+      { volumenes: true },
+    );
+    expect(borrarFicherosProyecto).toHaveBeenCalledWith(
+      mockClienteRow.slug,
+      parado.nombre,
+      true,
+    );
+  });
+
+  it("si Docker no deja borrar los contenedores, el Proyecto sigue en el Panel", async () => {
+    vi.mocked(eliminarContenedoresProyecto).mockRejectedValue(
+      new Error("docker"),
+    );
+    const ctx = await createContext();
+
+    await expect(
+      createCaller(ctx).proyectos.eliminar({ id: "p1" }),
+    ).rejects.toThrow();
+    expect(prisma.proyecto.delete).not.toHaveBeenCalled();
+  });
+
+  // Docker refuses to remove a network with a container attached: deleting
+  // the last Proyecto of a Cliente used to end in a 500.
+  it("al eliminar el último Proyecto del Cliente desconecta Traefik de su red antes de borrarla", async () => {
+    vi.mocked(prisma.proyecto.count).mockResolvedValue(0);
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.eliminar({ id: "p1" });
+
+    expect(desconectarTraefikDeRed).toHaveBeenCalledWith(mockClienteRow.slug);
+    expect(
+      vi.mocked(desconectarTraefikDeRed).mock.invocationCallOrder[0],
+    ).toBeLessThan(vi.mocked(eliminarRedCliente).mock.invocationCallOrder[0]);
   });
 });

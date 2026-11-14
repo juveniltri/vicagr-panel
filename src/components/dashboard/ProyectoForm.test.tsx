@@ -318,7 +318,7 @@ describe("EliminarProyectoButton", () => {
     fireEvent.click(casilla);
     fireEvent.click(screen.getByRole("button", { name: /confirmar/i }));
     await waitFor(() =>
-      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1", true),
+      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1", true, false),
     );
   });
 
@@ -327,7 +327,7 @@ describe("EliminarProyectoButton", () => {
     fireEvent.click(screen.getByRole("button", { name: /eliminar proyecto/i }));
     fireEvent.click(screen.getByRole("button", { name: /confirmar/i }));
     await waitFor(() =>
-      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1", false),
+      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1", false, false),
     );
   });
 
@@ -405,5 +405,26 @@ describe("ProyectoFormModal — límites de recursos", () => {
     expect(
       vi.mocked(editarProyectoAction).mock.calls[0].at(-1),
     ).toBeUndefined();
+  });
+});
+
+describe("EliminarProyectoButton — datos de la VPS", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(eliminarProyectoAction).mockResolvedValue(undefined);
+  });
+
+  it("los datos solo se borran marcando su casilla, que empieza desmarcada", async () => {
+    render(<EliminarProyectoButton proyectoId="p1" proyectoNombre="web-app" />);
+    fireEvent.click(screen.getByRole("button", { name: /eliminar proyecto/i }));
+
+    const casilla = screen.getByLabelText(/sus datos de la VPS/i);
+    expect(casilla).not.toBeChecked();
+    fireEvent.click(casilla);
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    await waitFor(() =>
+      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1", false, true),
+    );
   });
 });

@@ -8,7 +8,12 @@ import {
   ejecutarDeploy,
   limpiarDeploysHuerfanos,
 } from "@/lib/docker/deploys";
-import { comandoSshGit, prepararRepo } from "@/lib/docker/deploy";
+import {
+  borrarFicherosProyecto,
+  comandoSshGit,
+  prepararRepo,
+} from "@/lib/docker/deploy";
+import { desconectarTraefikDeRed } from "@/lib/docker/traefik";
 import { descifrar } from "@/lib/crypto";
 import { env } from "@/env";
 import { rutaHostVolumen } from "@/lib/volumenes";
@@ -17,6 +22,7 @@ import { descifrarClavePrivada } from "@/server/routers/credenciales";
 import {
   DockerError,
   detenerProyecto,
+  eliminarContenedoresProyecto,
   estadoContenedores,
   iniciarProyecto,
   listarServicios,
@@ -525,7 +531,13 @@ export const proyectosRouter = router({
     }),
 
   eliminar: protectedProcedure
-    .input(idInput.extend({ borrarCopias: z.boolean().optional() }))
+    .input(
+      idInput.extend({
+        borrarCopias: z.boolean().optional(),
+        // Also its clone, the data inside it and its named volumes.
+        borrarDatos: z.boolean().optional(),
+      }),
+    )
     .mutation(async ({ input }) => {
       const proyecto = await findProyectoOrThrow(input.id);
       rechazarSiRestaurando(proyecto.id);
@@ -540,14 +552,24 @@ export const proyectosRouter = router({
           message:
             "Hay una copia o restauración en curso: inténtalo cuando termine",
         });
+      const { slug } = proyecto.cliente;
+      const borrarDatos = input.borrarDatos ?? false;
+      // Before the row goes: if Docker refuses, the Proyecto is still in the
+      // Panel to try again, instead of leaving containers nobody can stop.
+      await eliminarContenedoresProyecto(slug, proyecto.nombre, {
+        volumenes: borrarDatos,
+      });
       await prisma.proyecto.delete({ where: { id: input.id } });
+      await borrarFicherosProyecto(slug, proyecto.nombre, borrarDatos);
       if (proyecto.rutas.length > 0)
         await sincronizarTraefikCliente(proyecto.clienteId);
       const restantes = await prisma.proyecto.count({
         where: { clienteId: proyecto.clienteId },
       });
       if (restantes === 0) {
-        await eliminarRedCliente(proyecto.cliente.slug);
+        // Docker refuses to remove a network Traefik is still attached to.
+        await desconectarTraefikDeRed(slug);
+        await eliminarRedCliente(slug);
       }
       // Last, so an unexpected error here cannot skip the cleanup above.
       if (input.borrarCopias) {
