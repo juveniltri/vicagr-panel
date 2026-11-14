@@ -96,6 +96,28 @@ const dominioPrincipal = (p: { rutas?: { dominio: string }[] }) =>
 
 type ProyectoConCliente = Awaited<ReturnType<typeof findProyectoOrThrow>>;
 
+// Docker only sees "<cliente>-<proyecto>". The Cliente "a-b" with the Proyecto
+// "c" and the Cliente "a" with the Proyecto "b-c" are one name there: start,
+// stop, logs and restores of one would act on the other's containers.
+async function rechazarSiNombreColisiona(
+  clienteSlug: string,
+  nombre: string,
+  exceptoId?: string,
+): Promise<void> {
+  const otros = await prisma.proyecto.findMany({
+    where: exceptoId ? { id: { not: exceptoId } } : undefined,
+    select: { nombre: true, cliente: { select: { slug: true } } },
+  });
+  const igual = otros.find(
+    (o) => `${o.cliente.slug}-${o.nombre}` === `${clienteSlug}-${nombre}`,
+  );
+  if (igual)
+    throw new TRPCError({
+      code: "CONFLICT",
+      message: `Ese nombre coincide en Docker con el Proyecto «${igual.nombre}» del Cliente «${igual.cliente.slug}». Elige otro.`,
+    });
+}
+
 function rechazarSiRestaurando(proyectoId: string): void {
   if (estaRestaurando(proyectoId))
     throw new TRPCError({ code: "CONFLICT", message: MENSAJE_RESTAURANDO });
@@ -414,6 +436,7 @@ export const proyectosRouter = router({
           code: "NOT_FOUND",
           message: "Cliente no encontrado",
         });
+      await rechazarSiNombreColisiona(cliente.slug, input.nombre);
       if (input.dominio)
         await comprobarRutaDisponible({
           dominio: input.dominio,
@@ -459,6 +482,12 @@ export const proyectosRouter = router({
           code: "CONFLICT",
           message: "No se puede renombrar un proyecto en ejecución",
         });
+      if (input.nombre !== proyecto.nombre)
+        await rechazarSiNombreColisiona(
+          proyecto.cliente.slug,
+          input.nombre,
+          proyecto.id,
+        );
 
       const actualizado = await prisma.proyecto.update({
         where: { id: input.id },

@@ -3246,3 +3246,65 @@ describe("proyectos — límites de recursos", () => {
     );
   });
 });
+
+// Docker only sees "<cliente>-<proyecto>": the Cliente "a-b" with the Proyecto
+// "c" and the Cliente "a" with the Proyecto "b-c" are the same name there, and
+// stopping, reading logs or restoring one would act on the other.
+describe("proyectos — nombres que Docker vería como el mismo", () => {
+  const existente = { nombre: "c", cliente: { slug: "a-b" } };
+  const clienteA = { id: "ca", slug: "a", nombre: "A", creadoEn: new Date() };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(estaRestaurando).mockReturnValue(false);
+    vi.mocked(prisma.proyecto.findUnique).mockReset();
+    vi.mocked(prisma.proyecto.update).mockReset();
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([existente] as never);
+    vi.mocked(prisma.cliente.findUnique).mockResolvedValue(clienteA as never);
+  });
+
+  it("crear rechaza un Proyecto cuyo nombre completo coincide con el de otro Cliente", async () => {
+    const ctx = await createContext();
+
+    await expect(
+      createCaller(ctx).proyectos.crear({ clienteId: "ca", nombre: "b-c" }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: expect.stringContaining("«c» del Cliente «a-b»"),
+    });
+    expect(prisma.proyecto.create).not.toHaveBeenCalled();
+  });
+
+  it("crear acepta un nombre que no coincide con ninguno", async () => {
+    vi.mocked(prisma.proyecto.create).mockResolvedValue({
+      ...mockProyecto,
+      cliente: clienteA,
+    } as never);
+    const ctx = await createContext();
+
+    await expect(
+      createCaller(ctx).proyectos.crear({ clienteId: "ca", nombre: "b-d" }),
+    ).resolves.toBeDefined();
+  });
+
+  it("renombrar rechaza la coincidencia, sin contar al propio Proyecto", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      id: "p9",
+      nombre: "otro",
+      estado: "stopped",
+      cliente: clienteA,
+      rutas: [],
+    } as never);
+    const ctx = await createContext();
+
+    await expect(
+      createCaller(ctx).proyectos.editar({ id: "p9", nombre: "b-c" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(
+      vi.mocked(prisma.proyecto.findMany).mock.calls.at(-1)?.[0]?.where,
+    ).toEqual({ id: { not: "p9" } });
+    expect(prisma.proyecto.update).not.toHaveBeenCalled();
+  });
+});
