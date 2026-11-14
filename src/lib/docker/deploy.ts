@@ -636,7 +636,7 @@ export async function deployProyecto(params: {
           encoding: "utf-8",
           mode: 0o600,
         });
-        // Left by versions before 3.0.1, which shared it between the Cliente's
+        // Left by versions before 3.1.0, which shared it between the Cliente's
         // Proyectos. TODO: drop this cleanup once every VPS has redeployed.
         await unlink(`${panelDir}/.env`).catch(() => {});
       } else {

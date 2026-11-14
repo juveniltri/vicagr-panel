@@ -258,7 +258,7 @@ docker compose up -d --build
 Los Proyectos redesplegados con la versión nueva siguen funcionando; vuelve a desplegarlos si
 algo de su configuración depende de la versión anterior.
 
-### B1b. A la 3.0.1 (variables y gestor de ficheros)
+### B1b. A la 3.1.0 (variables, volúmenes y gestor de ficheros)
 
 Sin migración ni variables nuevas: `git pull && docker compose up -d --build`.
 

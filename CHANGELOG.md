@@ -5,7 +5,7 @@ Novedades. Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES
 cada versión con su fecha, un resumen de una línea y los apartados Novedades,
 Correcciones y Seguridad.
 
-## [3.0.1] - 2026-11-14
+## [3.1.0] - 2026-11-14
 
 Correcciones de la auditoría de noviembre: variables con caracteres especiales, volúmenes que
 perdían ficheros, gestor de ficheros y sesión.
@@ -17,7 +17,6 @@ perdían ficheros, gestor de ficheros y sesión.
   build.
 - **Proyectos de compose pegado de un mismo Cliente**: compartían un fichero de variables y el
   último deploy pisaba las del otro. Cada Proyecto usa ya el suyo.
-
 - **Volúmenes nuevos**: al crear un volumen sobre una ruta que ya tenía ficheros en el contenedor
   (subidas, temas, plugins), esos ficheros se perdían en el siguiente deploy. Ahora se copian al
   volumen antes de recrear el contenedor, con su propietario y permisos; si la copia falla, el deploy
