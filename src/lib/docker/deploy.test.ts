@@ -1736,6 +1736,40 @@ describe("deployProyecto — Node.js sin root", () => {
     );
   });
 
+  // With it the deploy only ends well once the app is listening, and a
+  // Proyecto whose app stops answering shows up as fallen.
+  it("el compose de Node.js comprueba que la app escucha en su puerto", async () => {
+    await deployProyecto({ ...nodejs, puerto: 4000 });
+
+    const compose = mockWriteFile.mock.calls.find(
+      ([ruta]) =>
+        ruta === "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+    )?.[1] as string;
+    expect(compose).toContain(
+      [
+        "    healthcheck:",
+        '      test: ["CMD-SHELL", "nc -z 127.0.0.1 4000"]',
+        "      interval: 10s",
+        "      timeout: 5s",
+        "      retries: 12",
+        "      start_period: 20s",
+      ].join("\n"),
+    );
+  });
+
+  it.each(["dockerfile", "image"])(
+    "%s: no añade healthcheck: su imagen puede no tener con qué comprobarlo",
+    async (tipo) => {
+      await deployProyecto({ ...nodejs, tipo, imagenUrl: "nginx:1.27" });
+
+      const compose = mockWriteFile.mock.calls.find(
+        ([ruta]) =>
+          ruta === "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+      )?.[1] as string;
+      expect(compose).not.toContain("healthcheck:");
+    },
+  );
+
   it("la imagen generada se ejecuta con el usuario node y sus ficheros son suyos", async () => {
     await deployProyecto(nodejs);
 

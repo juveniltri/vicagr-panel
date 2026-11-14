@@ -407,7 +407,21 @@ function generarDockerComposeConBuild(params: {
   variables?: Array<{ clave: string; valor: string }>;
   volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
   limites?: Limites;
+  // Only for the image the Panel builds itself, which is known to have `nc`.
+  comprobarPuerto?: boolean;
 }): string {
+  // With it a deploy only ends well once the app is listening, and a Proyecto
+  // whose app stops answering shows up as fallen.
+  const healthcheck = params.comprobarPuerto
+    ? [
+        "    healthcheck:",
+        `      test: ["CMD-SHELL", "nc -z 127.0.0.1 ${params.puerto}"]`,
+        "      interval: 10s",
+        "      timeout: 5s",
+        "      retries: 12",
+        "      start_period: 20s",
+      ]
+    : [];
   return [
     "services:",
     "  app:",
@@ -423,6 +437,7 @@ function generarDockerComposeConBuild(params: {
     // Without a policy Docker leaves it down after a crash or a VPS reboot.
     "    restart: unless-stopped",
     ...serializarLimites(params.limites),
+    ...healthcheck,
     ...LOGGING_YAML,
   ].join("\n");
 }
@@ -881,6 +896,7 @@ export async function deployProyecto(params: {
           variables: runtimeVars,
           volumenes,
           limites: params.limites,
+          comprobarPuerto: true,
         }),
       );
       composeFile = composePath;
