@@ -241,6 +241,16 @@ describe("LoginForm — sesión ya iniciada", () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
   });
 
+  it("no redirige a otro sitio con una ruta que empieza por //", async () => {
+    conSesion(
+      { user: {} },
+      `?callbackUrl=${encodeURIComponent("https://panel.test//malo.test/x")}`,
+    );
+    render(<LoginForm />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/malo.test/x"));
+  });
+
   it("sin sesión se queda en el formulario", async () => {
     conSesion(null);
     render(<LoginForm />);

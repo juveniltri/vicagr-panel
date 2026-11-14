@@ -10,7 +10,9 @@ function destinoTrasEntrar(search: string, origin: string): string {
   try {
     const url = new URL(pedido, origin);
     if (url.origin !== origin || url.pathname.startsWith("/login")) return "/";
-    return url.pathname + url.search;
+    // "//otro.sitio/x" is a same-origin path here, but the browser would read
+    // it as an address on another host.
+    return url.pathname.replace(/^\/+/, "/") + url.search;
   } catch {
     return "/";
   }
