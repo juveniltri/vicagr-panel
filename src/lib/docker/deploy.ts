@@ -1,5 +1,12 @@
 import { execFile, spawn } from "node:child_process";
-import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { setTimeout as esperar } from "node:timers/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
@@ -219,7 +226,9 @@ function generarDockerfileNodejs(
       "FROM node:22-alpine AS runner",
       "WORKDIR /app",
       "ENV NODE_ENV=production",
-      "COPY --from=builder /app .",
+      "COPY --from=builder --chown=node:node /app .",
+      // Not root: a bug in the app must not be root on its files and volumes.
+      "USER node",
       `EXPOSE ${puerto}`,
       // The exec form is JSON: quotes in the command must be escaped.
       `CMD ["sh", "-c", ${JSON.stringify(startCmd)}]`,
@@ -233,6 +242,8 @@ function generarDockerfileNodejs(
     "COPY . .",
     "RUN npm ci",
     `RUN ${buildCmd}`,
+    "RUN chown -R node:node /app",
+    "USER node",
     `EXPOSE ${puerto}`,
     `CMD ["sh", "-c", ${JSON.stringify(startCmd)}]`,
   ].join("\n");
@@ -612,6 +623,32 @@ async function sembrarVolumenesNuevos(params: {
   }
 }
 
+// uid of the `node` user the generated Node.js image runs as.
+const UID_NODE = 1000;
+
+// The app used to run as root and wrote its Volúmenes as root; as `node` it
+// could no longer write there. Checked on the folder itself so an already
+// handed-over Volumen is not walked on every deploy.
+async function entregarVolumenesANode(
+  volumenes: Array<{ rutaHost: string }>,
+  onLog?: (line: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  for (const { rutaHost } of volumenes) {
+    const info = await stat(rutaHost).catch(() => null);
+    if (!info || info.uid === UID_NODE) continue;
+    onLog?.("→ Ajustando el propietario del volumen al usuario de la app...");
+    const entregar = enVolumen(
+      rutaHost,
+      "chown",
+      "-R",
+      `${UID_NODE}:${UID_NODE}`,
+      "/destino",
+    );
+    await ejecutar(entregar.comando, entregar.args, { signal });
+  }
+}
+
 export async function deployProyecto(params: {
   tipo: string;
   repoUrl?: string | null;
@@ -919,6 +956,8 @@ export async function deployProyecto(params: {
           onLog,
           signal,
         });
+      if (tipo === "nodejs")
+        await entregarVolumenesANode(volumenes, onLog, signal);
       onLog?.("→ Construyendo e iniciando contenedores...");
       output = await spawnDockerCompose(composeArgs, onLog, signal);
     } finally {

@@ -70,6 +70,9 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
 - **Contraseña solo por el acceso de emergencia**: con Pocket ID configurado, el login por
   contraseña deja de funcionar desde internet y solo vale por el túnel SSH (`production.md` § D).
   Sin Pocket ID configurado, nada cambia.
+- **Node.js sin root**: los Proyectos de tipo Node.js se ejecutan con un usuario sin privilegios. En
+  el primer deploy el Panel ajusta el propietario de sus volúmenes para que la app siga pudiendo
+  escribir.
 - **Git por SSH**: el Panel recuerda la clave del servidor del repositorio la primera vez y, si
   cambia, el deploy falla en vez de aceptar cualquier servidor.
 - **Webhook de GitHub**: el commit recibido debe ser un sha completo y el cuerpo tiene un máximo de

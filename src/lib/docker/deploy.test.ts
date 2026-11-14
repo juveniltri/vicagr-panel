@@ -63,12 +63,16 @@ const {
   };
 });
 
-const { mockReaddir, mockEjecutar, mockEncadenar } = vi.hoisted(() => ({
-  // Not empty by default: only an empty volume is seeded.
-  mockReaddir: vi.fn().mockResolvedValue(["ya-hay-datos"]),
-  mockEjecutar: vi.fn().mockResolvedValue(""),
-  mockEncadenar: vi.fn().mockResolvedValue(""),
-}));
+const { mockReaddir, mockEjecutar, mockEncadenar, mockStat } = vi.hoisted(
+  () => ({
+    // Already owned by the image's user: nothing to hand over.
+    mockStat: vi.fn().mockResolvedValue({ uid: 1000 }),
+    // Not empty by default: only an empty volume is seeded.
+    mockReaddir: vi.fn().mockResolvedValue(["ya-hay-datos"]),
+    mockEjecutar: vi.fn().mockResolvedValue(""),
+    mockEncadenar: vi.fn().mockResolvedValue(""),
+  }),
+);
 
 vi.mock("@/lib/backups/procesos", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/backups/procesos")>()),
@@ -86,6 +90,7 @@ vi.mock("node:fs/promises", () => ({
   unlink: mockUnlink,
   readFile: mockReadFile,
   readdir: mockReaddir,
+  stat: mockStat,
 }));
 vi.mock("@/env", () => ({
   env: {
@@ -1688,4 +1693,96 @@ describe("borrarFicherosProyecto", () => {
       borrarFicherosProyecto("acme", "web-app", true),
     ).resolves.toBeUndefined();
   });
+});
+
+// Running as root inside the container turns any bug in the app into root on
+// its files and volumes.
+describe("deployProyecto — Node.js sin root", () => {
+  const rutaHost = "/var/vicagr/repos/acme/web-app/volumes/uploads";
+  const nodejs = {
+    ...baseParams,
+    tipo: "nodejs",
+    buildCommand: "npm run build",
+    startCommand: "npm start",
+    volumenes: [{ rutaHost, rutaContenedor: "/app/uploads" }],
+  };
+  const dockerfile = () =>
+    mockWriteFile.mock.calls.find(
+      ([ruta]) => ruta === "/var/vicagr/repos/acme/.panel/web-app.Dockerfile",
+    )?.[1] as string;
+  const chowns = () =>
+    mockEjecutar.mock.calls.filter(([, args]) =>
+      (args as string[]).includes("chown"),
+    );
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue("");
+    mockUnlink.mockResolvedValue(undefined);
+    mockReaddir.mockResolvedValue(["ya-hay-datos"]);
+    mockStat.mockResolvedValue({ uid: 0 });
+    mockEjecutar.mockResolvedValue("");
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => cb(null, "e881352abcdef0123456789\n", ""),
+    );
+  });
+
+  it("la imagen generada se ejecuta con el usuario node y sus ficheros son suyos", async () => {
+    await deployProyecto(nodejs);
+
+    const lineas = dockerfile().split("\n");
+    expect(lineas).toContain("COPY --from=builder --chown=node:node /app .");
+    expect(lineas.indexOf("USER node")).toBeGreaterThan(
+      lineas.indexOf("FROM node:22-alpine AS runner"),
+    );
+    expect(lineas.indexOf("USER node")).toBeLessThan(
+      lineas.findIndex((l) => l.startsWith("CMD ")),
+    );
+  });
+
+  // The app used to write there as root; as node it could no longer write.
+  it("un Volumen que no es del usuario node se le entrega antes de arrancar", async () => {
+    await deployProyecto(nodejs);
+
+    expect(chowns()).toHaveLength(1);
+    expect(chowns()[0][1]).toEqual(
+      expect.arrayContaining([
+        "-v",
+        `${rutaHost}:/destino`,
+        "chown",
+        "-R",
+        "1000:1000",
+        "/destino",
+      ]),
+    );
+    expect(mockEjecutar.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSpawn.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("un Volumen que ya es del usuario node no se recorre en cada deploy", async () => {
+    mockStat.mockResolvedValue({ uid: 1000 });
+
+    await deployProyecto(nodejs);
+
+    expect(chowns()).toHaveLength(0);
+  });
+
+  it.each(["dockerfile", "image"])(
+    "%s: no toca el propietario de los Volúmenes: su imagen decide el usuario",
+    async (tipo) => {
+      await deployProyecto({ ...nodejs, tipo, imagenUrl: "nginx:1.27" });
+
+      expect(chowns()).toHaveLength(0);
+    },
+  );
 });
