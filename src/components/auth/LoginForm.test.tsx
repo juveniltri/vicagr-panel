@@ -266,3 +266,34 @@ describe("LoginForm — sesión ya iniciada", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 });
+
+describe("LoginForm — contraseña solo por el acceso de emergencia", () => {
+  it("por internet con Pocket ID no ofrece el formulario de contraseña y explica cómo entrar si Pocket ID cae", () => {
+    render(<LoginForm oidcActivo passwordDisponible={false} />);
+
+    expect(screen.queryByLabelText("Contraseña")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Entrar con Pocket ID" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("acceso de emergencia");
+  });
+
+  it("si el servidor rechaza la contraseña por no venir del acceso de emergencia, lo dice", async () => {
+    vi.mocked(loginAction).mockResolvedValue({
+      error:
+        "La contraseña solo vale por el acceso de emergencia. Entra con Pocket ID.",
+    });
+    render(<LoginForm oidcActivo />);
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText("Contraseña"), {
+      target: { value: "12345678" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "acceso de emergencia",
+    );
+  });
+});

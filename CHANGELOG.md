@@ -49,6 +49,9 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
 
 ### Seguridad
 
+- **Contraseña solo por el acceso de emergencia**: con Pocket ID configurado, el login por
+  contraseña deja de funcionar desde internet y solo vale por el túnel SSH (`production.md` § D).
+  Sin Pocket ID configurado, nada cambia.
 - **Sesión**: la cookie pasa a `SameSite=Strict` y el login limita los intentos también por cuenta
   (10 en 15 minutos), no solo por IP.
 - **Gestor de ficheros**: un contenedor podía dejar en su Volumen un enlace simbólico a ficheros
@@ -67,6 +70,9 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
 - Al abrir el Panel desde un enlace externo (un email, GitHub) verás un instante la pantalla de
   login antes de entrar: es el efecto de la cookie `SameSite=Strict`.
 - Comprueba una vez el login con Pocket ID tras actualizar.
+- **Si usas Pocket ID, antes de actualizar** confirma que cada persona del equipo tiene su cuenta
+  vinculada en Usuarios y que el acceso de emergencia funciona (`production.md` § D): tras
+  actualizar, la contraseña ya no entra por internet.
 - Redespliega los Proyectos de tipo Dockerfile, Node.js e imagen para que reciban el reinicio
   automático.
 - Un Servicio que sale con error (código distinto de 0) aparece ahora como «error». Si tienes alguno

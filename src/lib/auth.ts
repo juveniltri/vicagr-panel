@@ -7,7 +7,13 @@ import { env } from "@/env";
 import { prisma } from "@/lib/prisma";
 import { authConfig } from "./auth.config";
 import { crearLimitador } from "./rate-limit";
-import { PROVEEDOR_OIDC, accesoOidc, sesionVigente, tokenOidc } from "./sesion";
+import {
+  PROVEEDOR_OIDC,
+  accesoOidc,
+  passwordPermitida,
+  sesionVigente,
+  tokenOidc,
+} from "./sesion";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -16,6 +22,10 @@ const loginSchema = z.object({
 
 export class DemasiadosIntentos extends CredentialsSignin {
   code = "demasiados_intentos";
+}
+
+export class SoloEmergencia extends CredentialsSignin {
+  code = "solo_emergencia";
 }
 
 // Both the login page (server action) and /api/auth/callback go through
@@ -53,6 +63,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
       async authorize(credentials, request) {
+        if (!passwordPermitida(request.headers, Boolean(env.OIDC_ISSUER)))
+          throw new SoloEmergencia();
         if (limitarLogin(ipCliente(request))) throw new DemasiadosIntentos();
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) return null;

@@ -273,6 +273,11 @@ Después, redespliega los Proyectos cuyas variables contengan `$`, `#`, comillas
 Proyectos de compose pegado dejan de usar `/var/vicagr/repos/<cliente>/.panel/.env`: el Panel lo
 borra en el primer deploy y cada Proyecto pasa a `<proyecto>.env` en esa misma carpeta.
 
+**Antes de actualizar, si el Panel tiene Pocket ID configurado** (`OIDC_ISSUER` en el `.env`): desde
+esta versión la contraseña solo entra por el acceso de emergencia. Comprueba que cada persona tiene su
+cuenta vinculada en Usuarios → Pocket ID y haz la prueba de § D. Si Pocket ID cae, se entra con
+`ssh -L 3000:localhost:3000 <vps>` y `http://localhost:3000`, con usuario y contraseña.
+
 Comprueba después de actualizar:
 
 - **Login con Pocket ID**: la cookie de sesión es ahora `SameSite=Strict`. Entra una vez con Pocket ID
