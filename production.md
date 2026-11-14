@@ -280,6 +280,13 @@ cuenta vinculada en Usuarios → Pocket ID y haz la prueba de § D. Si Pocket ID
 
 Comprueba después de actualizar:
 
+- **`/api/health`**: con `curl` devuelve ya solo `{"status":"ok"}` (o `degraded` con un 503). Los
+  cuatro checks y la versión se ven en el Dashboard → Estado del VPS, o abriendo `/api/health` en el
+  navegador con la sesión iniciada.
+- **Git por SSH**: si GitHub (u otro servidor) cambia su clave, el deploy falla con «host key
+  verification failed». Tras confirmar que el cambio es legítimo, borra en la VPS
+  `/var/vicagr/repos/.git-known_hosts` y redespliega.
+
 - **Login con Pocket ID**: la cookie de sesión es ahora `SameSite=Strict`. Entra una vez con Pocket ID
   y confirma que acabas en el Dashboard (se ve un instante la pantalla de login). Si se queda en el
   login, entra con contraseña y avisa: el acceso de emergencia de § D sigue funcionando.

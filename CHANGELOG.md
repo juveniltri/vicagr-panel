@@ -44,6 +44,11 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
   (subidas, temas, plugins), esos ficheros se perdían en el siguiente deploy. Ahora se copian al
   volumen antes de recrear el contenedor, con su propietario y permisos; si la copia falla, el deploy
   se detiene sin tocar nada.
+- **Guardar variables** es todo o nada: un fallo a medias ya no pierde variables.
+- **Nombres que Docker vería como el mismo**: el Panel rechaza crear o renombrar un Proyecto cuyo
+  nombre completo coincide con el de otro Cliente (el Cliente `a-b` con el Proyecto `c` y el Cliente
+  `a` con el Proyecto `b-c`), porque parar o restaurar uno actuaba sobre el otro.
+- **Node.js**: un comando de arranque con comillas ya no rompe el deploy.
 - **Volumen creado antes del primer deploy**: el deploy fallaba al clonar el repositorio porque la
   carpeta ya no estaba vacía.
 - **Los volúmenes ya no entran en la imagen** al construir los Proyectos de tipo Node.js y
@@ -61,6 +66,12 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
 - **Contraseña solo por el acceso de emergencia**: con Pocket ID configurado, el login por
   contraseña deja de funcionar desde internet y solo vale por el túnel SSH (`production.md` § D).
   Sin Pocket ID configurado, nada cambia.
+- **Git por SSH**: el Panel recuerda la clave del servidor del repositorio la primera vez y, si
+  cambia, el deploy falla en vez de aceptar cualquier servidor.
+- **Webhook de GitHub**: el commit recibido debe ser un sha completo y el cuerpo tiene un máximo de
+  25 MB.
+- **Health check**: `/api/health` sin sesión solo dice si el Panel está bien; la versión y el detalle
+  se ven con sesión y en el Dashboard.
 - **Sesión**: la cookie pasa a `SameSite=Strict` y el login limita los intentos también por cuenta
   (10 en 15 minutos), no solo por IP.
 - **Gestor de ficheros**: un contenedor podía dejar en su Volumen un enlace simbólico a ficheros
