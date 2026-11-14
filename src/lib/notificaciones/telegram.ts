@@ -1,4 +1,5 @@
 import type { PayloadNotificacion } from "./index";
+import { asuntoNotificacion } from "./webhook";
 
 export async function enviarTelegram(
   botToken: string,
@@ -11,13 +12,17 @@ export async function enviarTelegram(
   const emoji = { exito: "✅", error: "❌", cancelado: "⏱️" }[
     payload.resultado
   ];
-  const titulo = payload.evento === "backup" ? "Backup" : "Deploy";
   const text = [
-    `${emoji} ${titulo} ${payload.resultado} — ${payload.proyectoNombre}`,
-    `Rama: ${payload.rama}`,
-    `SHA: ${payload.sha ?? "—"}`,
-    "",
-    "Output (últimas 20 líneas):",
+    `${emoji} ${asuntoNotificacion(payload)} — ${payload.proyectoNombre}`,
+    // A fall has no branch or commit to show.
+    ...(payload.evento === "servicio"
+      ? [`Cliente: ${payload.clienteSlug}`, ""]
+      : [
+          `Rama: ${payload.rama}`,
+          `SHA: ${payload.sha ?? "—"}`,
+          "",
+          "Output (últimas 20 líneas):",
+        ]),
     outputTruncado,
   ].join("\n");
 

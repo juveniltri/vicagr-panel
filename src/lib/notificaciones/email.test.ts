@@ -117,4 +117,20 @@ describe("enviarEmail — avisos de backup", () => {
     const { subject } = mockSendMail.mock.calls[0][0] as { subject: string };
     expect(subject).toBe("[vicagr] Backup error — panel");
   });
+
+  it("una caída se titula «Proyecto caído» y no lleva rama ni commit", async () => {
+    await enviarEmail(smtpConfig, {
+      ...payload,
+      evento: "servicio",
+      resultado: "error",
+      output: "worker: Exited (1) 2 minutes ago",
+    });
+    const { subject, text } = mockSendMail.mock.calls[0][0] as {
+      subject: string;
+      text: string;
+    };
+    expect(subject).toBe(`[vicagr] Proyecto caído — ${payload.proyectoNombre}`);
+    expect(text).not.toContain("Rama:");
+    expect(text).toContain("worker: Exited (1) 2 minutes ago");
+  });
 });

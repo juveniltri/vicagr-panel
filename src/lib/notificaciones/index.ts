@@ -8,7 +8,8 @@ import { logger } from "@/lib/logger";
 const log = logger.child({ module: "notificaciones" });
 
 export interface PayloadNotificacion {
-  evento?: "deploy" | "backup";
+  // "servicio": a Proyecto fell (error) or came back (exito) on its own.
+  evento?: "deploy" | "backup" | "servicio";
   proyectoNombre: string;
   clienteSlug: string;
   rama: string;

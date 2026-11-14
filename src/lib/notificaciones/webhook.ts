@@ -27,9 +27,15 @@ function destinoDe(url: string): Destino {
   return "generico";
 }
 
+// "Deploy error", "Backup exito", "Proyecto caído"…, shared by every channel.
+export function asuntoNotificacion(p: PayloadNotificacion): string {
+  if (p.evento === "servicio")
+    return p.resultado === "exito" ? "Proyecto recuperado" : "Proyecto caído";
+  return `${p.evento === "backup" ? "Backup" : "Deploy"} ${p.resultado}`;
+}
+
 function titulo(p: PayloadNotificacion): string {
-  const evento = p.evento === "backup" ? "Backup" : "Deploy";
-  return `${ICONO[p.resultado]} ${evento} ${p.resultado} — ${p.clienteSlug} / ${p.proyectoNombre}`;
+  return `${ICONO[p.resultado]} ${asuntoNotificacion(p)} — ${p.clienteSlug} / ${p.proyectoNombre}`;
 }
 
 function bloqueLog(output: string): string {
@@ -45,7 +51,12 @@ function bloqueLog(output: string): string {
 
 function cuerpo(destino: Destino, p: PayloadNotificacion): unknown {
   if (destino === "slack") {
-    return { text: `${titulo(p)}\nRama: ${p.rama} · Commit: ${p.sha ?? "—"}` };
+    return {
+      text:
+        p.evento === "servicio"
+          ? `${titulo(p)}\n${p.output}`
+          : `${titulo(p)}\nRama: ${p.rama} · Commit: ${p.sha ?? "—"}`,
+    };
   }
   if (destino === "discord") {
     return {
@@ -53,10 +64,13 @@ function cuerpo(destino: Destino, p: PayloadNotificacion): unknown {
         {
           title: titulo(p),
           color: COLOR[p.resultado],
-          fields: [
-            { name: "Rama", value: p.rama, inline: true },
-            { name: "Commit", value: p.sha ?? "—", inline: true },
-          ],
+          // A fall has no branch or commit to show.
+          ...(p.evento !== "servicio" && {
+            fields: [
+              { name: "Rama", value: p.rama, inline: true },
+              { name: "Commit", value: p.sha ?? "—", inline: true },
+            ],
+          }),
           ...(p.output.trim() ? { description: bloqueLog(p.output) } : {}),
         },
       ],

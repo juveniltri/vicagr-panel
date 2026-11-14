@@ -337,6 +337,24 @@ describe("listarServicios", () => {
     });
   });
 
+  // Docker has no "stopped on purpose" flag. 0 is a clean exit (one-shot jobs,
+  // migrations); 143 and 137 are what `docker stop` leaves behind.
+  it.each([
+    ["Exited (1) 5 minutes ago", "error"],
+    ["Exited (139) 2 hours ago", "error"],
+    ["Exited (0) 5 minutes ago", "stopped"],
+    ["Exited (143) 5 minutes ago", "stopped"],
+    ["Exited (137) 5 minutes ago", "stopped"],
+  ])("un contenedor con «%s» cuenta como %s", async (Status, estado) => {
+    mockListContainers.mockResolvedValue([
+      contenedor("c1", "web", "exited", Status),
+    ]);
+
+    const [servicio] = await listarServicios("cliente-uno", "web-app");
+
+    expect(servicio.estado).toBe(estado);
+  });
+
   it("devuelve un servicio por etiqueta, ordenado, con su estado y el detalle de Docker", async () => {
     mockListContainers.mockResolvedValue([
       contenedor("c1", "web", "running", "Up 2 hours"),
