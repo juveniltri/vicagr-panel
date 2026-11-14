@@ -4,7 +4,7 @@ import { type NextRequest } from "next/server";
 import { zip } from "fflate";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
-import { resolverRutaSegura, rutaHostVolumen } from "@/lib/volumenes";
+import { resolverRutaSinEnlaces, rutaHostVolumen } from "@/lib/volumenes";
 import { prisma } from "@/lib/prisma";
 
 async function resolveVolumen(id: string) {
@@ -45,7 +45,7 @@ export async function GET(
   );
 
   const subpath = req.nextUrl.searchParams.get("path") ?? "";
-  const dir = resolverRutaSegura(base, subpath);
+  const dir = await resolverRutaSinEnlaces(base, subpath);
   if (!dir) return new Response("Invalid path", { status: 400 });
 
   const nombres = filesParam
@@ -56,7 +56,9 @@ export async function GET(
   const entradas: Record<string, Uint8Array> = {};
   for (const nombre of nombres) {
     const safeName = path.basename(nombre);
-    const filePath = resolverRutaSegura(dir, safeName, { permitirRaiz: false });
+    const filePath = await resolverRutaSinEnlaces(dir, safeName, {
+      permitirRaiz: false,
+    });
     if (!filePath) continue;
     try {
       const data = await readFile(filePath);

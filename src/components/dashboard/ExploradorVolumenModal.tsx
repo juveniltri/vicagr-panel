@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 type Fichero = {
   nombre: string;
-  tipo: "file" | "dir";
+  tipo: "file" | "dir" | "enlace";
   tamaño: number | null;
   modificadoEn: string | null;
 };
@@ -330,7 +330,12 @@ export function ExploradorVolumenModal({
                         </button>
                       ) : (
                         <span className="font-mono text-xs text-text-primary flex items-center gap-1">
-                          📄 {f.nombre}
+                          {f.tipo === "enlace" ? "🔗" : "📄"} {f.nombre}
+                          {f.tipo === "enlace" && (
+                            <span className="font-body text-text-muted">
+                              (enlace: no se abre ni se descarga)
+                            </span>
+                          )}
                         </span>
                       )}
                     </td>

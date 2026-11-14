@@ -3,7 +3,7 @@ import { type NextRequest } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
-import { resolverRutaSegura, rutaHostVolumen } from "@/lib/volumenes";
+import { resolverRutaSinEnlaces, rutaHostVolumen } from "@/lib/volumenes";
 import { prisma } from "@/lib/prisma";
 
 const bodySchema = z.object({
@@ -44,7 +44,9 @@ export async function POST(
   );
 
   const relative = body.path ? `${body.path}/${body.nombre}` : body.nombre;
-  const target = resolverRutaSegura(base, relative, { permitirRaiz: false });
+  const target = await resolverRutaSinEnlaces(base, relative, {
+    permitirRaiz: false,
+  });
   if (!target) return new Response("Invalid path", { status: 400 });
 
   try {

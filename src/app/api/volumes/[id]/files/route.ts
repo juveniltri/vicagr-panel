@@ -1,9 +1,9 @@
-import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
-import { resolverRutaSegura, rutaHostVolumen } from "@/lib/volumenes";
+import { resolverRutaSinEnlaces, rutaHostVolumen } from "@/lib/volumenes";
 import { prisma } from "@/lib/prisma";
 
 async function resolveVolumen(id: string) {
@@ -45,18 +45,23 @@ export async function GET(
   );
 
   const subpath = req.nextUrl.searchParams.get("path") ?? "";
-  const target = resolverRutaSegura(base, subpath);
+  const target = await resolverRutaSinEnlaces(base, subpath);
   if (!target) return new Response("Invalid path", { status: 400 });
 
   try {
     const entries = await readdir(target, { withFileTypes: true });
     const files = await Promise.all(
       entries.map(async (e) => {
-        const info = await stat(path.join(target, e.name)).catch(() => null);
+        // lstat: a link is listed as a link, never as what it points at.
+        const info = await lstat(path.join(target, e.name)).catch(() => null);
         return {
           nombre: e.name,
-          tipo: e.isDirectory() ? "dir" : "file",
-          tamaño: info && !e.isDirectory() ? info.size : null,
+          tipo: e.isSymbolicLink()
+            ? "enlace"
+            : e.isDirectory()
+              ? "dir"
+              : "file",
+          tamaño: info && e.isFile() ? info.size : null,
           modificadoEn: info?.mtime ?? null,
         };
       }),
@@ -86,7 +91,7 @@ export async function POST(
   );
 
   const subpath = req.nextUrl.searchParams.get("path") ?? "";
-  const target = resolverRutaSegura(base, subpath);
+  const target = await resolverRutaSinEnlaces(base, subpath);
   if (!target) return new Response("Invalid path", { status: 400 });
 
   let formData: FormData;
@@ -109,7 +114,7 @@ export async function POST(
     if (!(value instanceof File)) continue;
     const safeName = path.basename(value.name);
     if (!safeName || safeName === "." || safeName === "..") continue;
-    const destPath = resolverRutaSegura(target, safeName, {
+    const destPath = await resolverRutaSinEnlaces(target, safeName, {
       permitirRaiz: false,
     });
     if (!destPath) continue;
@@ -150,7 +155,10 @@ export async function DELETE(
   const subpath = req.nextUrl.searchParams.get("path") ?? "";
   if (!subpath) return new Response("path is required", { status: 400 });
 
-  const target = resolverRutaSegura(base, subpath, { permitirRaiz: false });
+  const target = await resolverRutaSinEnlaces(base, subpath, {
+    permitirRaiz: false,
+    permitirEnlaceFinal: true,
+  });
   if (!target) return new Response("Invalid path", { status: 400 });
 
   try {

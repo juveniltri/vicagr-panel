@@ -11,7 +11,10 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-vi.mock("node:fs/promises", () => ({ readFile: vi.fn() }));
+vi.mock("node:fs/promises", () => ({
+  readFile: vi.fn(),
+  lstat: vi.fn(async () => ({ isSymbolicLink: () => false })),
+}));
 
 vi.mock("fflate", () => ({
   zip: vi.fn((_files, cb) =>
@@ -33,7 +36,7 @@ vi.mock("@/lib/volumenes", async (importOriginal) => ({
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { GET } from "./route";
 
 const mockSession = {
@@ -131,5 +134,25 @@ describe("GET /api/volumes/[id]/files/download", () => {
     const entradas = vi.mocked(zip).mock.calls[0][0] as Record<string, unknown>;
     expect(Object.keys(entradas)).toContain("a.jpg");
     expect(Object.keys(entradas)).toContain("b.png");
+  });
+
+  it("no incluye un enlace simbólico: el contenedor podría apuntarlo fuera del volumen", async () => {
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.volumen.findUnique).mockResolvedValue(
+      mockVolumen as never,
+    );
+    vi.mocked(readFile).mockResolvedValue(Buffer.from("datos") as never);
+    vi.mocked(lstat).mockImplementation(
+      async (ruta) =>
+        ({ isSymbolicLink: () => String(ruta).endsWith("enlace") }) as never,
+    );
+
+    const { zip } = await import("fflate");
+    await GET(makeRequest({ files: "a.jpg,enlace" }), {
+      params: Promise.resolve({ id: "v1" }),
+    });
+
+    const entradas = vi.mocked(zip).mock.calls[0][0] as Record<string, unknown>;
+    expect(Object.keys(entradas)).toEqual(["a.jpg"]);
   });
 });

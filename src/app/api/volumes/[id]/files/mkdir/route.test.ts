@@ -7,7 +7,10 @@ vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: { volumen: { findUnique: vi.fn() } },
 }));
-vi.mock("node:fs/promises", () => ({ mkdir: vi.fn() }));
+vi.mock("node:fs/promises", () => ({
+  mkdir: vi.fn(),
+  lstat: vi.fn(async () => ({ isSymbolicLink: () => false })),
+}));
 vi.mock("@/lib/volumenes", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/volumenes")>()),
   rutaHostVolumen: vi
