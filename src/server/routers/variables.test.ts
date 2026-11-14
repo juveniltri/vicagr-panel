@@ -45,6 +45,7 @@ vi.mock("@/lib/prisma", () => ({
       delete: vi.fn(),
       deleteMany: vi.fn(),
     },
+    $transaction: vi.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
   },
 }));
 
@@ -522,6 +523,31 @@ describe("variables.sincronizar", () => {
     });
     expect(prisma.variableEntorno.upsert).toHaveBeenCalledTimes(2);
     expect(result).toEqual({ guardadas: 2, eliminadas: 1, invalidas: [] });
+  });
+
+  // Deleting first and saving after, separately, lost variables when the
+  // second half failed.
+  it("borra y guarda en una sola transacción: todo o nada", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).variables.sincronizar({
+      proyectoId: "p1",
+      contenido: "API_KEY=secreto\nDATABASE_URL=postgres://localhost/db",
+    });
+
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
+    expect(vi.mocked(prisma.$transaction).mock.calls[0][0]).toHaveLength(3);
+  });
+
+  it("si la transacción falla, el error llega a quien guarda", async () => {
+    vi.mocked(prisma.$transaction).mockRejectedValueOnce(new Error("db caída"));
+    const ctx = await createContext();
+
+    await expect(
+      createCaller(ctx).variables.sincronizar({
+        proyectoId: "p1",
+        contenido: "API_KEY=secreto",
+      }),
+    ).rejects.toThrow();
   });
 
   it("elimina todas las variables si el contenido está vacío", async () => {

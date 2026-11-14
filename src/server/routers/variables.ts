@@ -211,23 +211,22 @@ export const variablesRouter = router({
 
       const clavesNuevas = validas.map((e) => e.clave);
 
-      const eliminadas = await prisma.variableEntorno.deleteMany({
-        where: { proyectoId, clave: { notIn: clavesNuevas } },
-      });
-
-      if (validas.length > 0) {
-        await Promise.all(
-          validas.map(({ clave, valor }) => {
-            const { valorCifrado, iv, authTag } = cifrar(valor);
-            return prisma.variableEntorno.upsert({
-              where: { proyectoId_clave: { proyectoId, clave } },
-              create: { proyectoId, clave, valorCifrado, iv, authTag },
-              update: { valorCifrado, iv, authTag },
-              select: { id: true },
-            });
-          }),
-        );
-      }
+      // One transaction: deleting first and saving after, separately, lost
+      // variables when the second half failed.
+      const [eliminadas] = await prisma.$transaction([
+        prisma.variableEntorno.deleteMany({
+          where: { proyectoId, clave: { notIn: clavesNuevas } },
+        }),
+        ...validas.map(({ clave, valor }) => {
+          const { valorCifrado, iv, authTag } = cifrar(valor);
+          return prisma.variableEntorno.upsert({
+            where: { proyectoId_clave: { proyectoId, clave } },
+            create: { proyectoId, clave, valorCifrado, iv, authTag },
+            update: { valorCifrado, iv, authTag },
+            select: { id: true },
+          });
+        }),
+      ]);
 
       return {
         guardadas: validas.length,
