@@ -447,7 +447,42 @@ describe("backups.obtenerConfiguracion", () => {
       claveConfirmada: false,
       repositorioInicializado: false,
       proximaCopia: null,
+      ultimoCiclo: null,
       enCurso: false,
+    });
+  });
+
+  // One line for the whole night: the Panel and each Proyecto it copied.
+  it("resume el último ciclo diario: el Panel y los Proyectos de esa noche", async () => {
+    m.configFind.mockResolvedValue({ habilitado: true, hora: 3 });
+    const iniciadoEn = new Date("2026-11-15T02:00:00Z");
+    m.backupFindFirst.mockResolvedValue({ iniciadoEn, resultado: "exito" });
+    m.backupFindMany.mockResolvedValue([
+      { proyectoNombre: "acme/web", resultado: "exito" },
+      { proyectoNombre: "acme/crm", resultado: "error" },
+      { proyectoNombre: null, resultado: "en_curso" },
+    ]);
+
+    const c = await caller().backups.obtenerConfiguracion();
+
+    expect(m.backupFindMany).toHaveBeenCalledWith({
+      where: {
+        operacion: "copia",
+        origen: "programado",
+        proyectoId: { not: null },
+        iniciadoEn: { gte: iniciadoEn },
+      },
+      orderBy: { iniciadoEn: "asc" },
+      select: { proyectoNombre: true, resultado: true },
+    });
+    expect(c.ultimoCiclo).toEqual({
+      iniciadoEn,
+      panel: "exito",
+      proyectos: [
+        { nombre: "acme/web", resultado: "exito" },
+        { nombre: "acme/crm", resultado: "error" },
+        { nombre: "—", resultado: "en_curso" },
+      ],
     });
   });
 

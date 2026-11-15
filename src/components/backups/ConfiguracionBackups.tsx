@@ -35,6 +35,31 @@ function textoUltimaCopia(historial: EjecucionBackup[]): string {
   return `${formatHace(ultima.iniciadoEn)} · correcta`;
 }
 
+const RESULTADO = {
+  exito: "correcta",
+  error: "con error",
+  en_curso: "en curso",
+} as const;
+
+function textoCiclo(
+  ciclo: NonNullable<ConfiguracionBackupVista["ultimoCiclo"]>,
+): string {
+  const partes = [
+    formatearFecha(ciclo.iniciadoEn),
+    `Panel ${RESULTADO[ciclo.panel]}`,
+  ];
+  if (ciclo.proyectos.length > 0) {
+    const bien = ciclo.proyectos.filter((p) => p.resultado === "exito");
+    const mal = ciclo.proyectos.filter((p) => p.resultado === "error");
+    partes.push(
+      `Proyectos: ${bien.length} de ${ciclo.proyectos.length} correctas`,
+    );
+    if (mal.length > 0)
+      partes.push(`con error: ${mal.map((p) => p.nombre).join(", ")}`);
+  }
+  return partes.join(" · ");
+}
+
 export function ConfiguracionBackups({
   config,
   credenciales,
@@ -119,6 +144,14 @@ export function ConfiguracionBackups({
                 : "Backups desactivados"
             }
           />
+          {config.ultimoCiclo && (
+            <div className="sm:col-span-2">
+              <Dato
+                etiqueta="Último ciclo diario"
+                valor={textoCiclo(config.ultimoCiclo)}
+              />
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 self-start">
           <button

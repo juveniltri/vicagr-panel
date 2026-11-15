@@ -168,8 +168,22 @@ export const backupsRouter = router({
     const ultimo = await prisma.backup.findFirst({
       where: { operacion: "copia", origen: "programado", proyectoId: null },
       orderBy: { iniciadoEn: "desc" },
-      select: { iniciadoEn: true },
+      select: { iniciadoEn: true, resultado: true },
     });
+    // The daily cycle copies the Panel first and then each Proyecto: the
+    // Proyecto rows since the last Panel row are that night's.
+    const delCiclo = ultimo
+      ? await prisma.backup.findMany({
+          where: {
+            operacion: "copia",
+            origen: "programado",
+            proyectoId: { not: null },
+            iniciadoEn: { gte: ultimo.iniciadoEn },
+          },
+          orderBy: { iniciadoEn: "asc" },
+          select: { proyectoNombre: true, resultado: true },
+        })
+      : [];
     const hora = c?.hora ?? 3;
     return {
       habilitado: c?.habilitado ?? false,
@@ -200,6 +214,16 @@ export const backupsRouter = router({
       repositorioInicializado: Boolean(c?.repositorioInicializadoEn),
       proximaCopia: c?.habilitado
         ? proximaCopia(new Date(), hora, ultimo?.iniciadoEn ?? null)
+        : null,
+      ultimoCiclo: ultimo
+        ? {
+            iniciadoEn: ultimo.iniciadoEn,
+            panel: ultimo.resultado,
+            proyectos: delCiclo.map((b) => ({
+              nombre: b.proyectoNombre ?? "—",
+              resultado: b.resultado,
+            })),
+          }
         : null,
       enCurso: hayOperacionEnCurso(),
     };
