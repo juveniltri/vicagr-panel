@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
@@ -48,6 +49,9 @@ export default async function ConfiguracionPage({
           api.backups.historial(),
           api.backups.copias().catch((e: unknown) => ({
             error: e instanceof Error ? e.message : String(e),
+            // By its code, not by the wording of the message.
+            sinConfigurar:
+              e instanceof TRPCError && e.code === "PRECONDITION_FAILED",
           })),
         ])
       : null;

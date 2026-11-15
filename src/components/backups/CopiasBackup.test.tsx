@@ -41,6 +41,7 @@ describe("CopiasBackup", () => {
   it("sin destino configurado avisa en neutro, no como error", () => {
     renderizar({
       error: "Backups sin configurar: no hay un destino configurado",
+      sinConfigurar: true,
     });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByText(/Backups sin configurar/).className).not.toMatch(

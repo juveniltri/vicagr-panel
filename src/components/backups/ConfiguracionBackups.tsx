@@ -44,7 +44,7 @@ export function ConfiguracionBackups({
   config: ConfiguracionBackupVista;
   credenciales: Array<{ id: string; nombre: string }>;
   historial: EjecucionBackup[];
-  copias: CopiaBackup[] | { error: string };
+  copias: CopiaBackup[] | { error: string; sinConfigurar?: boolean };
 }) {
   const router = useRouter();
   const toast = useToast();

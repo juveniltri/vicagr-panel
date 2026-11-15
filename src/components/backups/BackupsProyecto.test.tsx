@@ -205,14 +205,16 @@ describe("BackupsProyecto", () => {
   it("restaurar: casillas (las de .panel/ deshabilitadas con enlace a la guía) y confirmación con el nombre", async () => {
     const user = userEvent.setup();
     renderizar();
-    await user.click(screen.getByRole("button", { name: "Restaurar" }));
+    await user.click(
+      screen.getByRole("button", { name: /^Restaurar la copia del/ }),
+    );
     const dialogo = screen.getByRole("dialog");
     expect(within(dialogo).getByLabelText("bd:db")).toBeChecked();
     const panel = within(dialogo).getByLabelText("datos:.panel/x");
     expect(panel).toBeDisabled();
     expect(
       within(dialogo).getByRole("link", { name: /a mano/ }),
-    ).toHaveAttribute("href", "/guia");
+    ).toHaveAttribute("href", "/guia#10-copias-y-restauracion-de-un-proyecto");
     // Failed in that copy: offering it would only end in the server's refusal.
     expect(within(dialogo).getByLabelText("datos:./mis fotos")).toBeDisabled();
     expect(
@@ -241,7 +243,9 @@ describe("BackupsProyecto", () => {
   it("sin ningún elemento marcado no deja restaurar", async () => {
     const user = userEvent.setup();
     renderizar();
-    await user.click(screen.getByRole("button", { name: "Restaurar" }));
+    await user.click(
+      screen.getByRole("button", { name: /^Restaurar la copia del/ }),
+    );
     const dialogo = screen.getByRole("dialog");
     await user.click(within(dialogo).getByLabelText("bd:db"));
     await user.type(screen.getByLabelText(/Escribe crm/), "crm");
@@ -254,7 +258,9 @@ describe("BackupsProyecto", () => {
     a.restaurarProyectoBackupAction.mockResolvedValue({ error: "Rechazada" });
     const user = userEvent.setup();
     renderizar();
-    await user.click(screen.getByRole("button", { name: "Restaurar" }));
+    await user.click(
+      screen.getByRole("button", { name: /^Restaurar la copia del/ }),
+    );
     await user.type(screen.getByLabelText(/Escribe crm/), "crm");
     await user.click(screen.getByRole("button", { name: "Restaurar copia" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Rechazada");
@@ -264,7 +270,9 @@ describe("BackupsProyecto", () => {
   it("cancelar cierra el modal sin restaurar", async () => {
     const user = userEvent.setup();
     renderizar();
-    await user.click(screen.getByRole("button", { name: "Restaurar" }));
+    await user.click(
+      screen.getByRole("button", { name: /^Restaurar la copia del/ }),
+    );
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(a.restaurarProyectoBackupAction).not.toHaveBeenCalled();
@@ -274,8 +282,63 @@ describe("BackupsProyecto", () => {
     renderizar({ estado: { ...estadoBase, restaurando: true } });
     expect(screen.getByText("Restaurando…")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copia ahora" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Restaurar" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /^Restaurar la copia del/ }),
+    ).toBeDisabled();
     expect(screen.getByLabelText("bd:db")).toBeDisabled();
+    expect(
+      screen.getByRole("switch", { name: "Copias de este Proyecto" }),
+    ).toBeDisabled();
+  });
+
+  // The poller refreshes the page: what the server has wins over what the
+  // screen remembered.
+  it("tras refrescar muestra lo que tiene el servidor", () => {
+    const { rerender } = renderizar();
+    rerender(
+      <ToastProvider>
+        <BackupsProyecto
+          proyectoId="p1"
+          proyectoNombre="crm"
+          destinoConfigurado
+          estado={{
+            ...estadoBase,
+            habilitado: false,
+            elementos: [
+              { tipo: "bd", clave: "bd:db", incluido: false },
+              { tipo: "datos", clave: "datos:./data/media", incluido: true },
+            ],
+          }}
+          copias={[copia]}
+        />
+      </ToastProvider>,
+    );
+    expect(screen.getByLabelText("bd:db")).not.toBeChecked();
+    expect(screen.getByLabelText("datos:./data/media")).toBeChecked();
+    expect(
+      screen.getByRole("switch", { name: "Copias de este Proyecto" }),
+    ).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("el modal se maneja con teclado: foco dentro, Tab no se escapa, Escape cierra", async () => {
+    const user = userEvent.setup();
+    renderizar();
+    const abrir = screen.getByRole("button", {
+      name: /^Restaurar la copia del/,
+    });
+    await user.click(abrir);
+    const dialogo = screen.getByRole("dialog");
+    expect(within(dialogo).getByLabelText("bd:db")).toHaveFocus();
+
+    // Backwards from the first element lands on the last one inside.
+    await user.tab({ shift: true });
+    expect(dialogo).toContainElement(document.activeElement as HTMLElement);
+    await user.tab();
+    expect(within(dialogo).getByLabelText("bd:db")).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(abrir).toHaveFocus();
   });
 
   it("«Cancelar» con confirmación cuando hay una operación en curso", async () => {
