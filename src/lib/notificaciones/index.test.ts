@@ -426,6 +426,20 @@ describe("notificarFalloBackup", () => {
     );
   });
 
+  it("el aviso sale sin los valores de filas que cita psql", async () => {
+    mockFindUnique.mockResolvedValue({ ...configSoloWebhook });
+    await notificarFalloBackup({
+      operacion: "restauracion",
+      origen: "manual",
+      error:
+        "bd:db: ERROR: duplicado\nDETAIL:  Key (email)=(ana@x.es) already exists.",
+    });
+    expect(mockEnviarWebhook).toHaveBeenCalledWith(
+      "https://hooks.ejemplo.com",
+      expect.objectContaining({ output: "bd:db: ERROR: duplicado" }),
+    );
+  });
+
   it("sí avisa cuando se cancela por superar el tiempo máximo", async () => {
     mockFindUnique.mockResolvedValue({ ...configSoloWebhook });
     await notificarFalloBackup({

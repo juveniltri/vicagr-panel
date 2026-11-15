@@ -1,4 +1,5 @@
 import { descifrar } from "@/lib/crypto";
+import { sinValoresDeFilas } from "@/lib/backups/comandos";
 import { esCancelacionDelUsuario } from "@/lib/backups/operacion";
 import { prisma } from "@/lib/prisma";
 import { enviarEmail } from "./email";
@@ -104,7 +105,7 @@ export async function notificarFalloBackup(datos: {
           : "borrado de copias",
     sha: null,
     resultado: "error",
-    output: datos.error,
+    output: sinValoresDeFilas(datos.error),
   });
 }
 

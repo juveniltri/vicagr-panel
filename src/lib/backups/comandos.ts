@@ -69,6 +69,28 @@ export function claveDeRuta(ruta: string): string {
   throw new Error(`Ruta de copia no reconocida: ${ruta}`);
 }
 
+// Warnings leave the VPS (email, Telegram, webhooks), but psql and mysql
+// quote row values in their errors: «DETAIL: Key (email)=(ana@x.es)…», the
+// failing SQL line, «Duplicate entry 'ana@x.es' for key…». The history keeps
+// the full text; the warning gets it without them.
+export function sinValoresDeFilas(texto: string): string {
+  return texto
+    .split("\n")
+    .filter(
+      (l) =>
+        !/^\s*(?:psql:[^:]*:\d+:\s*)?(?:DETAIL|CONTEXT|LINE \d+|QUERY):/.test(
+          l,
+        ),
+    )
+    .map((l) =>
+      l
+        .replace(/(Duplicate entry )'.*?'( for key)/g, "$1'…'$2")
+        .replace(/(invalid input syntax for type [^:]+: )".*"/g, '$1"…"')
+        .replace(/(Incorrect \w+ value: )'.*?'/g, "$1'…'"),
+    )
+    .join("\n");
+}
+
 export function claveConocida(ruta: string): string | null {
   try {
     return claveDeRuta(ruta);
@@ -217,6 +239,9 @@ export function procesoTarDatos(
     args: [
       "run",
       "--rm",
+      // Only reads or writes a folder: it never needs the network.
+      "--network",
+      "none",
       "--name",
       nombreAuxiliar,
       "-v",
@@ -243,6 +268,8 @@ export function procesoExtraerDatos(
       "run",
       "--rm",
       "-i",
+      "--network",
+      "none",
       "--name",
       nombreAuxiliar,
       "-v",
@@ -271,7 +298,7 @@ function identificadores(trozo: string): string[] {
 
 function sentenciaDelRol(sentencia: string, rol: string): boolean {
   const cabecera = new RegExp(
-    String.raw`^(?:(?:CREATE|ALTER)\s+(?:ROLE|USER)|COMMENT\s+ON\s+ROLE)\s+${IDENT}`,
+    String.raw`^(?:(?:CREATE|ALTER)\s+(?:ROLE|USER)|COMMENT\s+ON\s+ROLE|SECURITY\s+LABEL(?:\s+FOR\s+\S+)?\s+ON\s+ROLE)\s+${IDENT}`,
     "i",
   ).exec(sentencia);
   if (cabecera) return nombreIdent(cabecera[1]) === rol;
