@@ -199,7 +199,14 @@ export function generarConfigProyecto(params: {
         // this router has none of the route's middlewares.
         service: "noop@internal",
         entryPoints: ["websecure"],
-        middlewares: [redireccion],
+        // «Solo desde Cloudflare» covers the secondary host too: otherwise it
+        // answers anyone who skips Cloudflare, and reveals the origin.
+        middlewares: [
+          ...(cadena.some(([tipo]) => tipo === "cloudflare")
+            ? [`${nombre}-cloudflare`]
+            : []),
+          redireccion,
+        ],
         tls,
       };
       middlewares[redireccion] = {
