@@ -39,6 +39,7 @@ vi.mock("./operacion", () => ({
 }));
 
 import { hashClave } from "./comandos";
+import { ErrorProceso } from "./procesos";
 import {
   aplicarRetencionProyectos,
   iniciarPurgaProyecto,
@@ -184,6 +185,62 @@ describe("aplicarRetencionProyectos", () => {
       ids: ["z"],
     });
     expect(m.podar).not.toHaveBeenCalled();
+  });
+
+  it("un forget que falla no impide los demás, y al final se informa", async () => {
+    m.listar.mockResolvedValue([
+      snap({ id: "a", proyectoId: "p1" }),
+      snap({ id: "b", proyectoId: "p2" }),
+      snap({ id: "z", proyectoId: "gone", fecha: dias(60) }),
+    ]);
+    m.findMany.mockResolvedValue([
+      { id: "p1", nombre: "web", cliente: { slug: "uno" } },
+      { id: "p2", nombre: "api", cliente: { slug: "uno" } },
+    ]);
+    m.detectar.mockResolvedValue({
+      valida: false,
+      elementos: [],
+      noCopiados: [],
+    });
+    m.olvidar
+      .mockRejectedValueOnce(
+        new ErrorProceso("restic terminó con código 1:\nlock", 1, ""),
+      )
+      .mockRejectedValueOnce("raro");
+
+    await expect(aplicarRetencionProyectos(r)).rejects.toThrow(
+      /incompleta \(2 de 3\):\nrestic.*\nlock\nraro/s,
+    );
+
+    expect(m.olvidar).toHaveBeenCalledTimes(3);
+    expect(m.olvidar).toHaveBeenLastCalledWith(r, {
+      etiquetas: [],
+      politica: "todo",
+      ids: ["z"],
+    });
+  });
+
+  // A dead or hung destination would make each of the remaining calls wait too.
+  it("una cancelación o un tiempo agotado paran la retención al momento", async () => {
+    m.listar.mockResolvedValue([
+      snap({ id: "a", proyectoId: "p1" }),
+      snap({ id: "b", proyectoId: "p2" }),
+    ]);
+    m.findMany.mockResolvedValue([
+      { id: "p1", nombre: "web", cliente: { slug: "uno" } },
+      { id: "p2", nombre: "api", cliente: { slug: "uno" } },
+    ]);
+    m.detectar.mockResolvedValue({
+      valida: false,
+      elementos: [],
+      noCopiados: [],
+    });
+    const cancelado = new ErrorProceso("restic cancelado", null, "");
+    cancelado.name = "AbortError";
+    m.olvidar.mockRejectedValueOnce(cancelado);
+
+    await expect(aplicarRetencionProyectos(r)).rejects.toBe(cancelado);
+    expect(m.olvidar).toHaveBeenCalledOnce();
   });
 
   it("no purga elementos si la detección trae noCopiados", async () => {

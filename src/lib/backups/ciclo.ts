@@ -108,10 +108,20 @@ async function cerrarFila(
   resultado: ResultadoElemento[] | string,
 ): Promise<void> {
   // copiarProyecto leaves an element en_curso when its closing update failed.
-  const { count } = await prisma.elementoCopia.updateMany({
-    where: { backupId, resultado: "en_curso" },
-    data: { resultado: "error", error: ELEMENTO_SIN_CERRAR },
-  });
+  // If this sweep fails too, some element may still be open: the copy cannot
+  // count as good, but it must still be closed.
+  const count = await prisma.elementoCopia
+    .updateMany({
+      where: { backupId, resultado: "en_curso" },
+      data: { resultado: "error", error: ELEMENTO_SIN_CERRAR },
+    })
+    .then(
+      (r) => r.count,
+      (err: unknown) => {
+        log.error({ err, backupId }, "No se pudieron cerrar los elementos");
+        return 1;
+      },
+    );
   const fallidos =
     typeof resultado === "string"
       ? resultado

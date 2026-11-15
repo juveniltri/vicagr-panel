@@ -131,6 +131,30 @@ function rechazarSiRestaurando(proyectoId: string): void {
     throw new TRPCError({ code: "CONFLICT", message: MENSAJE_RESTAURANDO });
 }
 
+export const REINTENTOS_ESTADO = 3;
+export const PAUSA_REINTENTO_MS = 500;
+
+async function volverAlEstado(
+  proyectoId: string,
+  estado: ProyectoConCliente["estado"],
+): Promise<void> {
+  for (let intento = 1; ; intento++) {
+    try {
+      await prisma.proyecto.update({
+        where: { id: proyectoId },
+        data: { estado },
+      });
+      return;
+    } catch (err) {
+      if (intento === REINTENTOS_ESTADO) {
+        captureException(err, { tags: { proyectoId } });
+        return;
+      }
+      await new Promise((r) => setTimeout(r, PAUSA_REINTENTO_MS));
+    }
+  }
+}
+
 // Single entry point for every deploy trigger (button, rollback, GitHub webhook)
 // so all of them deploy with the same variables, volumes and compose content.
 export async function lanzarDeploy(
@@ -182,10 +206,9 @@ export async function lanzarDeploy(
   // A restore may have been marked during the awaits above; it checks for
   // "deploying" after marking, so one of the two always sees the other.
   if (estaRestaurando(proyecto.id)) {
-    await prisma.proyecto.update({
-      where: { id: proyecto.id },
-      data: { estado: proyecto.estado },
-    });
+    // Left "deploying", the restore that is starting would see it and stop
+    // too, and nothing would put the Proyecto back until the Panel restarts.
+    await volverAlEstado(proyecto.id, proyecto.estado);
     throw new TRPCError({ code: "CONFLICT", message: MENSAJE_RESTAURANDO });
   }
 

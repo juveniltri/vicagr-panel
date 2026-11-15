@@ -169,6 +169,7 @@ import {
 } from "@/lib/deploy-stream";
 import { createCallerFactory, createContext } from "@/server/trpc";
 import { appRouter } from "@/server/routers/_app";
+import { REINTENTOS_ESTADO } from "@/server/routers/proyectos";
 
 const createCaller = createCallerFactory(appRouter);
 
@@ -3168,6 +3169,42 @@ describe("proyectos — Proyecto restaurando", () => {
       data: { estado: "stopped" },
     });
     expect(ejecutarDeploy).not.toHaveBeenCalled();
+  });
+
+  it("deploy: si volver al estado previo falla, lo reintenta y sigue rechazando", async () => {
+    vi.mocked(estaRestaurando)
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+    vi.mocked(prisma.proyecto.update)
+      .mockResolvedValueOnce(mockProyecto as never)
+      .mockRejectedValueOnce(new Error("BD caída un momento"))
+      .mockResolvedValueOnce(mockProyecto as never);
+
+    await expect(
+      createCaller(await createContext()).proyectos.deploy({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "CONFLICT", message: MENSAJE });
+    expect(prisma.proyecto.update).toHaveBeenNthCalledWith(3, {
+      where: { id: "p1" },
+      data: { estado: "stopped" },
+    });
+  });
+
+  it("deploy: si no consigue volver al estado previo, lo registra y sigue rechazando", async () => {
+    vi.mocked(estaRestaurando)
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+    const fallo = new Error("BD caída");
+    vi.mocked(prisma.proyecto.update)
+      .mockResolvedValueOnce(mockProyecto as never)
+      .mockRejectedValue(fallo);
+
+    await expect(
+      createCaller(await createContext()).proyectos.deploy({ id: "p1" }),
+    ).rejects.toMatchObject({ code: "CONFLICT", message: MENSAJE });
+    expect(prisma.proyecto.update).toHaveBeenCalledTimes(1 + REINTENTOS_ESTADO);
+    expect(captureException).toHaveBeenCalledWith(fallo, {
+      tags: { proyectoId: "p1" },
+    });
   });
 });
 

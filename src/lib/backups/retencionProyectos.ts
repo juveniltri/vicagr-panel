@@ -118,9 +118,31 @@ export async function aplicarRetencionProyectos(r: Restic): Promise<void> {
     detectados,
     ahora: new Date(),
   });
-  for (const o of plan.olvidos) await olvidar(r, o);
+  const pasos = plan.olvidos.map((o) => () => olvidar(r, o));
   if (plan.purgas.length > 0) {
-    await olvidar(r, { etiquetas: [], politica: "todo", ids: plan.purgas });
+    pasos.push(() =>
+      olvidar(r, { etiquetas: [], politica: "todo", ids: plan.purgas }),
+    );
+  }
+  // One failed group (a stale lock, a bad tag) must not leave the others to
+  // grow; a cancellation or a hung destination stops at once instead.
+  const fallos: string[] = [];
+  for (const paso of pasos) {
+    try {
+      await paso();
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") throw err;
+      log.error(
+        { err },
+        "No se pudo aplicar la retención a un grupo de copias",
+      );
+      fallos.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+  if (fallos.length > 0) {
+    throw new Error(
+      `Retención de Proyectos incompleta (${fallos.length} de ${pasos.length}):\n${fallos.join("\n")}`,
+    );
   }
 }
 
