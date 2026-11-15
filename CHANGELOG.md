@@ -5,6 +5,128 @@ Novedades. Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES
 cada versión con su fecha, un resumen de una línea y los apartados Novedades,
 Correcciones y Seguridad.
 
+## [3.1.0] - 2026-11-15
+
+Avisos cuando un Proyecto se cae y correcciones de la auditoría de noviembre: variables con
+caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y sesión.
+
+### Novedades
+
+- **Aviso de caída**: si un Servicio se cae, entra en bucle de reinicios o queda `unhealthy`, el
+  Proyecto pasa a «error» en un par de minutos y llega un aviso «Proyecto caído» por los canales de
+  Configuración → Notificaciones; cuando vuelve, «Proyecto recuperado», también si se arregla
+  desde el Panel. Detener un Proyecto desde el Panel no avisa.
+- **Alerta de disco**: aviso «Disco casi lleno» al llegar al 85 % de ocupación de la VPS y «Disco
+  recuperado» al bajar del 80 %.
+- **Latido para un vigilante externo** (opcional, `LATIDO_URL`): el Panel llama cada minuto a un
+  servicio como healthchecks.io mientras está sano; si la VPS, Traefik o el Panel caen, avisa ese
+  servicio. Pasos en `production.md` § B1b.
+- **Reiniciar** levanta también los Servicios caídos, no solo los que estaban en marcha.
+- **El estado sigue a Docker**: el Panel comprueba cada minuto los contenedores, así que un Proyecto
+  ya no aparece «running» con sus contenedores caídos.
+- **Deploy comprobado**: un deploy solo termina bien si los contenedores siguen en marcha unos
+  segundos después y, si tienen healthcheck, están sanos. Si uno muere al arrancar, el deploy falla y
+  muestra sus últimas líneas de log.
+- **Límites de recursos**: los Proyectos de tipo Dockerfile, Node.js e imagen arrancan con un máximo
+  de 1 GB de memoria y 1 CPU, para que uno desbocado no deje sin recursos a los demás. Se cambian en
+  Ajustes → Editar. Los de tipo compose ponen los suyos en su `docker-compose.yml`.
+- **Plantillas al crear un Proyecto**: «WordPress (con MariaDB)» crea el compose con WordPress y su
+  base de datos, volúmenes para `wp-content` y los datos, subidas de hasta 64 MB y contraseñas
+  aleatorias en Variables; queda listo para instalar tras el primer deploy. «Next.js» rellena tipo,
+  puerto y comandos.
+- **Node.js**: el Panel comprueba que la app escucha en su puerto. Un deploy cuya app no arranca
+  falla en vez de darse por bueno, y una app que deja de responder aparece como caída.
+- **Deploys sin corte innecesario**: un deploy ya no reinicia todos los Servicios, solo los que han
+  cambiado. La base de datos de un Proyecto sigue en marcha cuando solo cambia la aplicación.
+- **Eliminar un Proyecto** borra también sus contenedores y los ficheros con sus variables. Sus datos
+  (carpeta y volúmenes) solo se borran marcando «Borrar también sus datos de la VPS».
+- **Reinicio automático**: los Proyectos de tipo Dockerfile, Node.js e imagen vuelven a arrancar solos
+  tras una caída o un reinicio de la VPS.
+
+### Correcciones
+
+- **Variables con `$`, `#`, comillas o espacios**: llegaban cortadas o alteradas al contenedor
+  (contraseñas, salts de WordPress). Ahora llegan tal cual se escriben en el Panel, también las de
+  build.
+- **Proyectos de compose pegado de un mismo Cliente**: compartían un fichero de variables y el
+  último deploy pisaba las del otro. Cada Proyecto usa ya el suyo.
+- **Volúmenes nuevos**: al crear un volumen sobre una ruta que ya tenía ficheros en el contenedor
+  (subidas, temas, plugins), esos ficheros se perdían en el siguiente deploy. Ahora se copian al
+  volumen antes de recrear el contenedor, con su propietario y permisos; si la copia falla, el deploy
+  se detiene sin tocar nada.
+- **Guardar variables** es todo o nada: un fallo a medias ya no pierde variables.
+- **Nombres que Docker vería como el mismo**: el Panel rechaza crear o renombrar un Proyecto cuyo
+  nombre completo coincide con el de otro Cliente (el Cliente `a-b` con el Proyecto `c` y el Cliente
+  `a` con el Proyecto `b-c`), porque parar o restaurar uno actuaba sobre el otro.
+- **Node.js**: un comando de arranque con comillas ya no rompe el deploy.
+- **Volumen creado antes del primer deploy**: el deploy fallaba al clonar el repositorio porque la
+  carpeta ya no estaba vacía.
+- **Los volúmenes ya no entran en la imagen** al construir los Proyectos de tipo Node.js y
+  Dockerfile.
+- **Cambiar el repositorio de un Proyecto** ya tiene efecto en el siguiente deploy; antes seguía
+  usando el anterior.
+- **Volúmenes → aviso**: al crear uno se indica que no se monta hasta el próximo deploy (Reiniciar no
+  basta) y queda marcado «Pendiente de deploy». En los Proyectos de tipo compose se explica que los
+  volúmenes se declaran en su `docker-compose.yml`.
+- **Gestor de ficheros**: subir o descargar ficheros grandes ya no deja al Panel sin memoria. Máximo
+  de 2 GB por fichero subido; para más, usa SFTP.
+- **Gestor de ficheros → propietario**: subir, crear carpetas y borrar ya funciona en los volúmenes
+  cuyos ficheros son del contenedor (WordPress, nginx…). Lo nuevo queda con el propietario de la
+  carpeta donde cae, así que la app puede seguir usándolo.
+- **Contraste en el tema claro**: el texto secundario, los colores de estado y el botón principal
+  se leen mejor (cumplen WCAG AA).
+
+### Seguridad
+
+- **Contraseña solo por el acceso de emergencia**: con Pocket ID configurado, el login por
+  contraseña deja de funcionar desde internet y solo vale por el túnel SSH (`production.md` § D).
+  Sin Pocket ID configurado, nada cambia.
+- **Node.js sin root**: los Proyectos de tipo Node.js se ejecutan con un usuario sin privilegios. En
+  el primer deploy el Panel ajusta el propietario de sus volúmenes para que la app siga pudiendo
+  escribir.
+- **Git por SSH**: el Panel recuerda la clave del servidor del repositorio la primera vez y, si
+  cambia, el deploy falla en vez de aceptar cualquier servidor.
+- **Webhook de GitHub**: el commit recibido debe ser un sha completo y el cuerpo tiene un máximo de
+  25 MB.
+- **Health check**: `/api/health` sin sesión solo dice si el Panel está bien; la versión y el detalle
+  se ven con sesión y en el Dashboard.
+- **Sesión**: la cookie pasa a `SameSite=Strict` y el login limita también los intentos fallidos
+  por cuenta (10 en 15 minutos), no solo por IP.
+- **Gestor de ficheros**: un contenedor podía dejar en su Volumen un enlace simbólico a ficheros
+  de otro Cliente o de la VPS y el Panel lo seguía al listar, descargar, subir o borrar. Los enlaces
+  se muestran como enlaces y no se abren ni se descargan; borrarlos elimina solo el enlace.
+- **Carpeta del Volumen**: si la carpeta de un Volumen (o una de las que la contienen) es un enlace
+  simbólico, por ejemplo uno subido al repositorio, el deploy se cancela y el gestor de ficheros no
+  la abre: Docker la habría montado apuntando a otra carpeta de la VPS.
+
+### Al actualizar
+
+- Levanta el stack completo: `git pull && docker compose up -d --build`. No hay migración ni
+  variables nuevas.
+- **Revisa las variables que se apoyaban en el comportamiento anterior** antes de redesplegar: un
+  valor que referencia otra variable (`postgres://${USUARIO}@db`) o que lleva `$$` para escapar un
+  `$` ya no se transforma y llega literal. Escribe el valor final.
+- Redespliega los Proyectos con variables que contengan `$`, `#`, comillas o espacios para que
+  reciban el valor correcto. Detalle en `production.md` § B1b.
+- Al abrir el Panel desde un enlace externo (un email, GitHub) verás un instante la pantalla de
+  login antes de entrar: es el efecto de la cookie `SameSite=Strict`.
+- Comprueba una vez el login con Pocket ID tras actualizar.
+- **Si usas Pocket ID, antes de actualizar** confirma que cada persona del equipo tiene su cuenta
+  vinculada en Usuarios y que el acceso de emergencia funciona (`production.md` § D): tras
+  actualizar, la contraseña ya no entra por internet.
+- Redespliega los Proyectos de tipo Dockerfile, Node.js e imagen para que reciban el reinicio
+  automático. **Antes, revisa sus límites** en Ajustes → Editar: con ese deploy empiezan a aplicarse
+  1 GB de memoria y 1 CPU, y un contenedor que necesite más memoria será reiniciado por Docker.
+- La migración de la base de datos se aplica sola al arrancar.
+- **Proyectos Node.js**: al redesplegar pasan a ejecutarse sin root y con comprobación de puerto.
+  Revisa que el «Puerto del contenedor» de cada uno sea el puerto en el que escucha la app: si no
+  coincide, el deploy fallará a los 3 minutos con «sigue sin estar sano».
+- Un deploy ya no reinicia los Servicios que no cambian. Si tu repositorio monta ficheros de
+  configuración en un Servicio (un `nginx.conf`, por ejemplo) y solo cambian esos ficheros, pulsa
+  Reiniciar en ese Servicio después del deploy.
+- Un Servicio que sale con error (código distinto de 0) aparece ahora como «error». Si tienes alguno
+  que termina así a propósito, haz que salga con 0.
+
 ## [3.0.0] - 2026-11-05
 
 El Panel pasa a llamarse vicagr-panel y los nombres internos de la VPS cambian de `vicalba` a

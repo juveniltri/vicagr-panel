@@ -253,3 +253,58 @@ describe("enviarWebhook — avisos de backup", () => {
     expect(body.text.split("\n")[0]).toBe("❌ Backup error — backups / panel");
   });
 });
+
+describe("enviarWebhook — caída y recuperación de un Proyecto", () => {
+  const caida = {
+    ...payload,
+    evento: "servicio" as const,
+    resultado: "error" as const,
+    output: "worker: Exited (1) 2 minutes ago",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFetch.mockResolvedValue({ ok: true });
+  });
+
+  it("en Discord se titula «Proyecto caído», sin rama ni commit, con los Servicios caídos", async () => {
+    await enviarWebhook("https://discord.com/api/webhooks/1/t", caida);
+    const [embed] = cuerpoEnviado().embeds;
+    expect(embed.title).toContain("❌ Proyecto caído — ");
+    expect(embed.fields).toBeUndefined();
+    expect(embed.description).toContain("worker: Exited (1) 2 minutes ago");
+  });
+
+  it("en Slack lleva los Servicios caídos en vez de rama y commit", async () => {
+    await enviarWebhook("https://hooks.slack.com/services/T/B/secret", caida);
+    const { text } = cuerpoEnviado();
+    expect(text).toContain("Proyecto caído");
+    expect(text).toContain("worker: Exited (1) 2 minutes ago");
+    expect(text).not.toContain("Rama:");
+  });
+
+  it.each([
+    ["error", "❌ Disco casi lleno — "],
+    ["exito", "✅ Disco recuperado — "],
+  ] as const)(
+    "el aviso de disco con %s se titula «%s»",
+    async (resultado, titulo) => {
+      await enviarWebhook("https://hooks.slack.com/services/T/B/secret", {
+        ...caida,
+        evento: "disco",
+        resultado,
+        output: "Disco al 87 %",
+      });
+      expect(cuerpoEnviado().text).toContain(titulo);
+      expect(cuerpoEnviado().text).not.toContain("Rama:");
+    },
+  );
+
+  it("la recuperación se titula «Proyecto recuperado»", async () => {
+    await enviarWebhook("https://hooks.slack.com/services/T/B/secret", {
+      ...caida,
+      resultado: "exito",
+    });
+    expect(cuerpoEnviado().text).toContain("✅ Proyecto recuperado — ");
+  });
+});

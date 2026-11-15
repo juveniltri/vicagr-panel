@@ -9,7 +9,13 @@ const {
   mockLogs,
   mockDemuxStream,
   mockListContainers,
+  mockRemove,
+  mockListNetworks,
+  mockListVolumes,
 } = vi.hoisted(() => ({
+  mockRemove: vi.fn(),
+  mockListNetworks: vi.fn(),
+  mockListVolumes: vi.fn(),
   mockStop: vi.fn(),
   mockStart: vi.fn(),
   mockRestart: vi.fn(),
@@ -24,6 +30,10 @@ vi.mock("dockerode", () => ({
     return {
       getContainer: mockGetContainer,
       listContainers: mockListContainers,
+      listNetworks: mockListNetworks,
+      listVolumes: mockListVolumes,
+      getNetwork: (id: string) => ({ remove: () => mockRemove("red", id) }),
+      getVolume: (id: string) => ({ remove: () => mockRemove("volumen", id) }),
       modem: { demuxStream: mockDemuxStream },
     };
   }),
@@ -36,6 +46,7 @@ vi.mock("@/env", () => ({
 import {
   DockerError,
   detenerProyecto,
+  eliminarContenedoresProyecto,
   estadoContenedores,
   iniciarProyecto,
   listarServicios,
@@ -221,13 +232,41 @@ describe("restartProyecto", () => {
     expect(mockStart).not.toHaveBeenCalled();
   });
 
-  it("solo consulta contenedores en marcha (all=false)", async () => {
-    mockListContainers.mockResolvedValue([]);
+  // A crashed container is exactly what Reiniciar is pressed for; a one-shot
+  // job that finished (migrations) must not run again.
+  it("levanta también los contenedores caídos, pero no repite los que terminaron bien", async () => {
+    mockListContainers.mockResolvedValue([
+      { ...makeContainer("c1", "web"), State: "running", Status: "Up 2 hours" },
+      {
+        ...makeContainer("c2", "worker"),
+        State: "exited",
+        Status: "Exited (1) 5 minutes ago",
+      },
+      {
+        ...makeContainer("c3", "migrar"),
+        State: "exited",
+        Status: "Exited (0) 2 hours ago",
+      },
+    ]);
     await restartProyecto("cliente-uno", "web-app");
 
     expect(mockListContainers).toHaveBeenCalledWith(
-      expect.objectContaining({ all: false }),
+      expect.objectContaining({ all: true }),
     );
+    expect(mockGetContainer.mock.calls.map(([id]) => id)).toEqual(["c1", "c2"]);
+  });
+
+  it("al reiniciar un Servicio concreto lo arranca aunque estuviera parado", async () => {
+    mockListContainers.mockResolvedValue([
+      {
+        ...makeContainer("c3", "web"),
+        State: "exited",
+        Status: "Exited (143) 2 hours ago",
+      },
+    ]);
+    await restartProyecto("cliente-uno", "web-app", "web");
+
+    expect(mockGetContainer).toHaveBeenCalledWith("c3");
   });
 
   it("ignora 304 en restart", async () => {
@@ -302,7 +341,7 @@ describe("acciones sobre un servicio", () => {
     await restartProyecto("cliente-uno", "web-app", "worker");
 
     expect(mockListContainers).toHaveBeenCalledWith({
-      all: false,
+      all: true,
       filters: filtroServicio,
     });
     expect(mockRestart).toHaveBeenCalledTimes(1);
@@ -335,6 +374,24 @@ describe("listarServicios", () => {
       all: true,
       filters: { label: ["com.docker.compose.project=cliente-uno-web-app"] },
     });
+  });
+
+  // Docker has no "stopped on purpose" flag. 0 is a clean exit (one-shot jobs,
+  // migrations); 143 and 137 are what `docker stop` leaves behind.
+  it.each([
+    ["Exited (1) 5 minutes ago", "error"],
+    ["Exited (139) 2 hours ago", "error"],
+    ["Exited (0) 5 minutes ago", "stopped"],
+    ["Exited (143) 5 minutes ago", "stopped"],
+    ["Exited (137) 5 minutes ago", "stopped"],
+  ])("un contenedor con «%s» cuenta como %s", async (Status, estado) => {
+    mockListContainers.mockResolvedValue([
+      contenedor("c1", "web", "exited", Status),
+    ]);
+
+    const [servicio] = await listarServicios("cliente-uno", "web-app");
+
+    expect(servicio.estado).toBe(estado);
   });
 
   it("devuelve un servicio por etiqueta, ordenado, con su estado y el detalle de Docker", async () => {
@@ -584,5 +641,77 @@ describe("estadoContenedores", () => {
   it("devuelve stopped si no hay contenedores corriendo", async () => {
     mockListContainers.mockResolvedValue([]);
     expect(await estadoContenedores("cliente-uno", "web-app")).toBe("stopped");
+  });
+});
+
+describe("eliminarContenedoresProyecto", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    mockGetContainer.mockImplementation((id: string) => ({
+      remove: (opts: unknown) => mockRemove("contenedor", id, opts),
+    }));
+    mockListContainers.mockResolvedValue([
+      makeContainer("c1", "web"),
+      makeContainer("c2", "db"),
+    ]);
+    mockListNetworks.mockResolvedValue([{ Id: "n1" }]);
+    mockListVolumes.mockResolvedValue({ Volumes: [{ Name: "acme_pgdata" }] });
+  });
+
+  const filtro = {
+    filters: { label: ["com.docker.compose.project=cliente-uno-web-app"] },
+  };
+
+  it("borra todos los contenedores del Proyecto, parados incluidos, y su red de compose", async () => {
+    await eliminarContenedoresProyecto("cliente-uno", "web-app");
+
+    expect(mockListContainers).toHaveBeenCalledWith({ all: true, ...filtro });
+    expect(mockRemove).toHaveBeenCalledWith("contenedor", "c1", {
+      force: true,
+    });
+    expect(mockRemove).toHaveBeenCalledWith("contenedor", "c2", {
+      force: true,
+    });
+    expect(mockRemove).toHaveBeenCalledWith("red", "n1");
+  });
+
+  it("no toca los volúmenes con nombre si no se pide: son los datos del Proyecto", async () => {
+    await eliminarContenedoresProyecto("cliente-uno", "web-app");
+
+    expect(mockListVolumes).not.toHaveBeenCalled();
+  });
+
+  it("con volumenes: true borra también los volúmenes con nombre del Proyecto", async () => {
+    await eliminarContenedoresProyecto("cliente-uno", "web-app", {
+      volumenes: true,
+    });
+
+    expect(mockListVolumes).toHaveBeenCalledWith(filtro);
+    expect(mockRemove).toHaveBeenCalledWith("volumen", "acme_pgdata");
+  });
+
+  it("con volumenes: true y ninguno que borrar no falla", async () => {
+    mockListVolumes.mockResolvedValue({ Volumes: null });
+
+    await expect(
+      eliminarContenedoresProyecto("cliente-uno", "web-app", {
+        volumenes: true,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("sin Docker en desarrollo no falla; en producción sí, para no borrar el Proyecto dejando contenedores", async () => {
+    mockListContainers.mockRejectedValue(new Error("ENOENT docker.sock"));
+
+    await expect(
+      eliminarContenedoresProyecto("cliente-uno", "web-app"),
+    ).resolves.toBeUndefined();
+
+    vi.stubEnv("NODE_ENV", "production");
+    await expect(
+      eliminarContenedoresProyecto("cliente-uno", "web-app"),
+    ).rejects.toThrow();
+    vi.unstubAllEnvs();
   });
 });

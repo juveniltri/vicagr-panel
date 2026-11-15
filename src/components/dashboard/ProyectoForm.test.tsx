@@ -249,6 +249,7 @@ describe("ProyectoFormModal — editar proyecto", () => {
         undefined,
         undefined,
         undefined,
+        undefined,
       );
     });
   });
@@ -317,7 +318,7 @@ describe("EliminarProyectoButton", () => {
     fireEvent.click(casilla);
     fireEvent.click(screen.getByRole("button", { name: /confirmar/i }));
     await waitFor(() =>
-      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1", true),
+      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1", true, false),
     );
   });
 
@@ -326,7 +327,7 @@ describe("EliminarProyectoButton", () => {
     fireEvent.click(screen.getByRole("button", { name: /eliminar proyecto/i }));
     fireEvent.click(screen.getByRole("button", { name: /confirmar/i }));
     await waitFor(() =>
-      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1", false),
+      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1", false, false),
     );
   });
 
@@ -348,5 +349,129 @@ describe("EliminarProyectoButton", () => {
       expect(screen.getByText(/No se puede eliminar/)).toBeInTheDocument(),
     );
     expect(mockPush).not.toHaveBeenCalled();
+  });
+});
+
+describe("ProyectoFormModal — límites de recursos", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(editarProyectoAction).mockResolvedValue(undefined);
+  });
+
+  const conLimites = {
+    ...mockProyecto,
+    tipo: "image" as const,
+    imagenUrl: "nginx:1.27",
+    limiteMemoriaMb: 1024,
+    limiteCpus: 1,
+  };
+
+  it("al editar un Proyecto de compose generado deja cambiar memoria y CPU", async () => {
+    render(<ProyectoFormModal proyecto={conLimites} onClose={onClose} />);
+
+    fireEvent.change(screen.getByLabelText("Memoria máxima (MB)"), {
+      target: { value: "2048" },
+    });
+    fireEvent.change(screen.getByLabelText("CPUs máximas"), {
+      target: { value: "1.5" },
+    });
+    fireEvent.submit(
+      screen.getByLabelText("Memoria máxima (MB)").closest("form")!,
+    );
+
+    await waitFor(() => expect(editarProyectoAction).toHaveBeenCalled());
+    expect(vi.mocked(editarProyectoAction).mock.calls[0].at(-1)).toEqual({
+      limiteMemoriaMb: 2048,
+      limiteCpus: 1.5,
+    });
+  });
+
+  it("en un Proyecto de tipo compose no se ofrecen: los pone su docker-compose.yml", () => {
+    render(
+      <ProyectoFormModal
+        proyecto={{ ...conLimites, tipo: "compose" }}
+        onClose={onClose}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Memoria máxima (MB)")).toBeNull();
+  });
+
+  it("sin conocer los límites (edición desde el listado) no los toca", async () => {
+    render(<ProyectoFormModal proyecto={mockProyecto} onClose={onClose} />);
+    fireEvent.submit(screen.getByLabelText(/nombre/i).closest("form")!);
+
+    await waitFor(() => expect(editarProyectoAction).toHaveBeenCalled());
+    expect(
+      vi.mocked(editarProyectoAction).mock.calls[0].at(-1),
+    ).toBeUndefined();
+  });
+});
+
+describe("EliminarProyectoButton — datos de la VPS", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(eliminarProyectoAction).mockResolvedValue(undefined);
+  });
+
+  it("los datos solo se borran marcando su casilla, que empieza desmarcada", async () => {
+    render(<EliminarProyectoButton proyectoId="p1" proyectoNombre="web-app" />);
+    fireEvent.click(screen.getByRole("button", { name: /eliminar proyecto/i }));
+
+    const casilla = screen.getByLabelText(/sus datos de la VPS/i);
+    expect(casilla).not.toBeChecked();
+    fireEvent.click(casilla);
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    await waitFor(() =>
+      expect(eliminarProyectoAction).toHaveBeenCalledWith("p1", false, true),
+    );
+  });
+});
+
+describe("ProyectoFormModal — plantillas", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(crearProyectoAction).mockResolvedValue(undefined);
+  });
+
+  const elegir = (nombre: RegExp) => {
+    fireEvent.click(screen.getByLabelText("Plantilla"));
+    fireEvent.click(screen.getByRole("option", { name: nombre }));
+  };
+  const crear = async () => {
+    fireEvent.change(screen.getByLabelText(/nombre/i), {
+      target: { value: "blog" },
+    });
+    fireEvent.submit(screen.getByLabelText(/nombre/i).closest("form")!);
+    await waitFor(() => expect(crearProyectoAction).toHaveBeenCalled());
+    return vi.mocked(crearProyectoAction).mock.calls[0];
+  };
+
+  it("WordPress crea un Proyecto compose en el puerto 80 y pide la plantilla al servidor", async () => {
+    render(<ProyectoFormModal clienteId={CLIENT_ID} onClose={onClose} />);
+    elegir(/WordPress/);
+
+    expect(screen.getByRole("note")).toHaveTextContent("MariaDB");
+    const args = await crear();
+    expect(args[5]).toBe("compose");
+    expect(args[6]).toBe(80);
+    expect(args.at(-1)).toBe("wordpress");
+  });
+
+  it("Next.js rellena tipo, puerto y comandos, que se pueden cambiar", async () => {
+    render(<ProyectoFormModal clienteId={CLIENT_ID} onClose={onClose} />);
+    elegir(/Next\.js/);
+
+    const args = await crear();
+    expect(args.slice(5, 7)).toEqual(["nodejs", 3000]);
+    expect(args.slice(9, 11)).toEqual(["npm run build", "npm start"]);
+    expect(args).toHaveLength(11);
+  });
+
+  it("al editar un Proyecto no se ofrecen plantillas", () => {
+    render(<ProyectoFormModal proyecto={mockProyecto} onClose={onClose} />);
+
+    expect(screen.queryByLabelText("Plantilla")).toBeNull();
   });
 });

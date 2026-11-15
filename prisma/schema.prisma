@@ -77,6 +77,9 @@ model Proyecto {
   startCommand         String?
   composeContent       String?           @db.Text
   backupsHabilitados   Boolean           @default(true)
+  // Applied to the composes the Panel generates; a compose Proyecto sets its own.
+  limiteMemoriaMb      Int               @default(1024)
+  limiteCpus           Float             @default(1)
   elementosBackup      ElementoBackup[]
   variables            VariableEntorno[]
   deploys              Deploy[]

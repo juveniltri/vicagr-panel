@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { mismoRepositorio, verificarFirmaGitHub } from "@/lib/github/webhook";
+import {
+  leerCuerpo,
+  mismoRepositorio,
+  verificarFirmaGitHub,
+} from "@/lib/github/webhook";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/env";
 import { estaRestaurando } from "@/lib/backups/restaurando";
@@ -9,7 +13,11 @@ import { lanzarDeploy } from "@/server/routers/proyectos";
 
 const pushPayloadSchema = z.object({
   ref: z.string(),
-  after: z.string().optional(),
+  // It ends up as an argument to `git checkout`.
+  after: z
+    .string()
+    .regex(/^[0-9a-f]{40}$/)
+    .optional(),
   deleted: z.boolean().optional(),
   repository: z.object({
     clone_url: z.string().optional(),
@@ -27,7 +35,12 @@ function extraerJson(body: string, contentType: string): unknown {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const body = await req.text();
+  const body = await leerCuerpo(req);
+  if (body === null)
+    return NextResponse.json(
+      { error: "Cuerpo demasiado grande" },
+      { status: 413 },
+    );
   const signature = req.headers.get("x-hub-signature-256") ?? "";
   const event = req.headers.get("x-github-event") ?? "";
 

@@ -7,7 +7,13 @@ import { env } from "@/env";
 import { prisma } from "@/lib/prisma";
 import { authConfig } from "./auth.config";
 import { crearLimitador } from "./rate-limit";
-import { PROVEEDOR_OIDC, accesoOidc, sesionVigente, tokenOidc } from "./sesion";
+import {
+  PROVEEDOR_OIDC,
+  accesoOidc,
+  passwordPermitida,
+  sesionVigente,
+  tokenOidc,
+} from "./sesion";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -18,9 +24,16 @@ export class DemasiadosIntentos extends CredentialsSignin {
   code = "demasiados_intentos";
 }
 
+export class SoloEmergencia extends CredentialsSignin {
+  code = "solo_emergencia";
+}
+
 // Both the login page (server action) and /api/auth/callback go through
 // authorize(), so the brute-force limit lives here and not in the proxy.
 const limitarLogin = crearLimitador({ max: 10, ventanaMs: 60_000 });
+// Per account as well: guesses spread over many IPs never hit the IP limit.
+// Counted whether or not the email exists, so it reveals nothing.
+const limitarCuenta = crearLimitador({ max: 10, ventanaMs: 15 * 60_000 });
 
 // Traefik sets X-Real-Ip and does not trust a client-sent X-Forwarded-For.
 function ipCliente(request: Request): string {
@@ -50,18 +63,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
       async authorize(credentials, request) {
+        if (!passwordPermitida(request.headers, Boolean(env.OIDC_ISSUER)))
+          throw new SoloEmergencia();
         if (limitarLogin(ipCliente(request))) throw new DemasiadosIntentos();
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) return null;
+        const cuenta = parsed.data.email.toLowerCase();
+        if (limitarCuenta.bloqueado(cuenta)) throw new DemasiadosIntentos();
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email },
         });
-        if (!user) return null;
-        const valid = await bcrypt.compare(
-          parsed.data.password,
-          user.passwordHash,
-        );
-        if (!valid) return null;
+        // Only failures count: a user who logs in often must not lock
+        // themselves out.
+        const valid =
+          !!user &&
+          (await bcrypt.compare(parsed.data.password, user.passwordHash));
+        if (!user || !valid) {
+          limitarCuenta(cuenta);
+          return null;
+        }
         return { id: user.id, email: user.email, name: user.nombre };
       },
     }),

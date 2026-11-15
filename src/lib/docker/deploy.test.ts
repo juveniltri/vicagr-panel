@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 const {
   mockExecFile,
@@ -63,6 +63,25 @@ const {
   };
 });
 
+const { mockReaddir, mockEjecutar, mockEncadenar, mockStat, mockLstat } =
+  vi.hoisted(() => ({
+    mockLstat: vi.fn<
+      (ruta: string) => Promise<{ isSymbolicLink: () => boolean }>
+    >(async () => ({ isSymbolicLink: () => false })),
+    // Already owned by the image's user: nothing to hand over.
+    mockStat: vi.fn().mockResolvedValue({ uid: 1000 }),
+    // Not empty by default: only an empty volume is seeded.
+    mockReaddir: vi.fn().mockResolvedValue(["ya-hay-datos"]),
+    mockEjecutar: vi.fn().mockResolvedValue(""),
+    mockEncadenar: vi.fn().mockResolvedValue(""),
+  }));
+
+vi.mock("@/lib/backups/procesos", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/backups/procesos")>()),
+  ejecutar: mockEjecutar,
+  encadenar: mockEncadenar,
+}));
+
 vi.mock("node:child_process", () => ({
   execFile: mockExecFile,
   spawn: mockSpawn,
@@ -72,6 +91,9 @@ vi.mock("node:fs/promises", () => ({
   mkdir: mockMkdir,
   unlink: mockUnlink,
   readFile: mockReadFile,
+  readdir: mockReaddir,
+  stat: mockStat,
+  lstat: mockLstat,
 }));
 vi.mock("@/env", () => ({
   env: {
@@ -89,7 +111,16 @@ vi.mock("dockerode", () => ({
   }),
 }));
 
-import { deployProyecto } from "./deploy";
+import { ErrorProceso } from "@/lib/backups/procesos";
+import {
+  borrarFicherosProyecto,
+  deployProyecto,
+  TIEMPOS_SALUD,
+} from "./deploy";
+
+// No waiting in tests; the ones about the wait set their own times.
+const sinEspera = { observacionMs: 0, intervaloMs: 0, maximoMs: 1000 };
+Object.assign(TIEMPOS_SALUD, sinEspera);
 
 const makeSpawnResult = (
   mockSpawn as unknown as { _make: (exitCode?: number) => object }
@@ -383,18 +414,25 @@ describe("deployProyecto con variables de entorno", () => {
     );
   });
 
-  it("escribe valores sin escapar en el .env del repoDir (docker compose parsea .env natively)", async () => {
+  // Compose expands $ and cuts at " #" in an unquoted .env value; double quotes
+  // with \\ \" \$ is the form that round-trips (checked against Compose v5).
+  it("entrecomilla y escapa en el .env los valores que Compose alteraría", async () => {
     await deployProyecto({
       ...baseParams,
       variables: [
-        { clave: "PASSWORD", valor: 'p@ss#word"with"quotes' },
+        { clave: "SALT", valor: "|Rk}+w$1 #x 'a' \"b\" ${HOME}" },
         { clave: "PATH_VAR", valor: "C:\\Users\\name" },
+        { clave: "URL", valor: "postgres://u:p@db:5432/app?x=1" },
       ],
     });
 
     expect(mockWriteFile).toHaveBeenCalledWith(
       "/var/vicagr/repos/acme/web-app/.env",
-      'PASSWORD=p@ss#word"with"quotes\nPATH_VAR=C:\\Users\\name',
+      [
+        'SALT="|Rk}+w\\$1 #x \'a\' \\"b\\" \\${HOME}"',
+        'PATH_VAR="C:\\\\Users\\\\name"',
+        'URL="postgres://u:p@db:5432/app?x=1"',
+      ].join("\n"),
       { encoding: "utf-8", mode: 0o600 },
     );
   });
@@ -532,6 +570,24 @@ describe("deployProyecto con credencial SSH", () => {
 
   const keyFilePath = "/var/vicagr/repos/acme/.panel/web-app.deploy_key";
 
+  // With /dev/null as known_hosts every connection accepted whatever server
+  // answered, so someone in the middle could serve other code.
+  it("git por SSH recuerda la clave del host: la primera vez la guarda y después exige la misma", async () => {
+    await deployProyecto({
+      ...baseParams,
+      credencial: { clavePrivada: "clave" },
+    });
+
+    const sshDeGit = mockExecFileOpts.mock.calls
+      .map(([, , opts]) => (opts as { env?: NodeJS.ProcessEnv })?.env)
+      .find((env) => env?.GIT_SSH_COMMAND)?.GIT_SSH_COMMAND;
+    expect(sshDeGit).toContain("-o StrictHostKeyChecking=accept-new");
+    expect(sshDeGit).toContain(
+      "-o UserKnownHostsFile=/var/vicagr/repos/.git-known_hosts",
+    );
+    expect(sshDeGit).not.toContain("/dev/null");
+  });
+
   it("escribe la clave privada en .deploy_key con permisos 0o600", async () => {
     await deployProyecto({
       ...baseParams,
@@ -663,6 +719,48 @@ describe("deployProyecto — composeContent (compose editor)", () => {
     );
   });
 
+  // .panel/ is shared by every Proyecto of the Cliente: a common .env there
+  // handed one Proyecto's secrets to the next one deployed.
+  it("compose pegado: no escribe un .env común del Cliente y borra el antiguo", async () => {
+    await deployProyecto({
+      ...baseParams,
+      composeContent: composeYaml,
+      variables: [{ clave: "SECRET", valor: "abc123" }],
+    });
+
+    const comun = "/var/vicagr/repos/acme/.panel/.env";
+    expect(
+      vi.mocked(mockWriteFile).mock.calls.filter(([p]) => p === comun),
+    ).toHaveLength(0);
+    expect(mockUnlink).toHaveBeenCalledWith(comun);
+  });
+
+  it("compose pegado: env_file: .env apunta al fichero del propio Proyecto", async () => {
+    await deployProyecto({
+      ...baseParams,
+      composeContent:
+        "services:\n  web:\n    image: nginx\n    env_file: .env\n  api:\n    image: node\n    env_file:\n      - ./.env\n      - otro.env\n",
+    });
+
+    const [, contenido] = vi
+      .mocked(mockWriteFile)
+      .mock.calls.find(
+        ([p]) =>
+          p === "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+      )!;
+    expect(contenido).toContain("env_file: web-app.env");
+    expect(contenido).toContain("- web-app.env\n      - otro.env");
+  });
+
+  it("compose pegado: pasa siempre su --env-file para no interpolar con el .env de otro Proyecto", async () => {
+    await deployProyecto({ ...baseParams, composeContent: composeYaml });
+
+    const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+    expect(spawnArgs[spawnArgs.indexOf("--env-file") + 1]).toBe(
+      "/var/vicagr/repos/acme/.panel/web-app.env",
+    );
+  });
+
   it("no necesita repoUrl para desplegar cuando hay composeContent", async () => {
     await expect(
       deployProyecto({
@@ -679,6 +777,16 @@ describe("deployProyecto — composeContent (compose editor)", () => {
       .mocked(mockExecFile)
       .mock.calls.filter(([cmd]) => cmd === "git");
     expect(gitCalls).toHaveLength(0);
+  });
+
+  // Forcing it restarted every Servicio on every push, the Proyecto's database
+  // included. Compose already recreates the ones whose image or config changed.
+  it("no fuerza recrear los Servicios que no han cambiado", async () => {
+    await deployProyecto(baseParams);
+
+    const spawnArgs = mockSpawn.mock.calls.at(-1)?.[1] as string[];
+    expect(spawnArgs).toEqual(expect.arrayContaining(["up", "--build", "-d"]));
+    expect(spawnArgs).not.toContain("--force-recreate");
   });
 
   it("sigue usando repoDir/docker-compose.yml cuando no hay composeContent", async () => {
@@ -883,13 +991,82 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
     expect(mockUnlink).toHaveBeenCalledWith(envLocal);
   });
 
+  // The app's dotenv (Next, Vite) can't escape a quote and expands $: wrap in
+  // a quote the value doesn't use and escape $ (checked against @next/env).
+  it("nodejs: los valores con $, # o comillas llegan intactos al .env.local", async () => {
+    await deployProyecto({
+      ...nodejs,
+      variablesBuildTime: [
+        { clave: "A", valor: 'pa$$ #x "dq"' },
+        { clave: "B", valor: 'it\'s "q" $5' },
+      ],
+    });
+
+    expect(writesTo(envLocal)[0]?.[1]).toBe(
+      [
+        "A='pa\\$\\$ #x \"dq\"'",
+        'B=`it\'s "q" \\$5`',
+        "GIT_SHA_SHORT=e881352",
+      ].join("\n"),
+    );
+  });
+
+  it("los composes generados escapan $ para que Compose no lo interpole", async () => {
+    await deployProyecto({
+      ...baseParams,
+      tipo: "dockerfile",
+      variables: [{ clave: "SALT", valor: 'a$b${C} "q" \\d' }],
+      variablesBuildTime: [{ clave: "KEY", valor: "x$y" }],
+    });
+
+    const [compose] = writesTo(
+      "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+    );
+    expect(compose?.[1]).toContain('        KEY: "x$$y"');
+    expect(compose?.[1]).toContain('      SALT: "a$$b$${C} \\"q\\" \\\\d"');
+  });
+
+  it("compose pegado: un valor con $ sustituido en el YAML no se vuelve a interpolar", async () => {
+    await deployProyecto({
+      ...baseParams,
+      composeContent:
+        "services:\n  web:\n    image: nginx\n    command: ${CMD}\n",
+      variables: [{ clave: "CMD", valor: "echo $HOME $& $$" }],
+    });
+
+    const [compose] = writesTo(
+      "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+    );
+    expect(compose?.[1]).toContain("command: echo $$HOME $$& $$$$\n");
+  });
+
   const ignoreGenerado =
     "/var/vicagr/repos/acme/.panel/web-app.Dockerfile.dockerignore";
+
+  it("nodejs: un comando de arranque con comillas no rompe el Dockerfile generado", async () => {
+    await deployProyecto({
+      ...nodejs,
+      startCommand: "node -e \"require('./server')\" --dir C:\\app",
+    });
+
+    const [dockerfile] = writesTo(
+      "/var/vicagr/repos/acme/.panel/web-app.Dockerfile",
+    );
+    const cmd = (dockerfile?.[1] as string)
+      .split("\n")
+      .find((l) => l.startsWith("CMD "))!;
+    // The exec form is JSON: it must parse back to the command as typed.
+    expect(JSON.parse(cmd.slice("CMD ".length))).toEqual([
+      "sh",
+      "-c",
+      "node -e \"require('./server')\" --dir C:\\app",
+    ]);
+  });
 
   it("nodejs: la imagen no incluye el .git del repositorio", async () => {
     await deployProyecto(nodejs);
 
-    expect(writesTo(ignoreGenerado)[0]?.[1]).toBe(".git\n");
+    expect(writesTo(ignoreGenerado)[0]?.[1]).toBe(".git\nvolumes\n");
   });
 
   it("nodejs: respeta el .dockerignore del repositorio y le añade .git", async () => {
@@ -901,7 +1078,9 @@ describe("deployProyecto — variables build-time y GIT_SHA_SHORT", () => {
 
     await deployProyecto(nodejs);
 
-    expect(writesTo(ignoreGenerado)[0]?.[1]).toBe("dist\n*.log\n\n.git\n");
+    expect(writesTo(ignoreGenerado)[0]?.[1]).toBe(
+      "dist\n*.log\n\n.git\nvolumes\n",
+    );
   });
 
   it("compose desde repo no borra un .env.local que no ha creado", async () => {
@@ -1013,4 +1192,654 @@ describe("deployProyecto — limpieza de disco", () => {
     await expect(deployProyecto(baseParams)).rejects.toThrow();
     expect(llamadasDocker()).toEqual([]);
   });
+});
+
+// A Volumen is an empty host folder mounted over the container path: without
+// seeding it, what the container had there is hidden, and what it had created
+// at runtime (uploads) is lost when the deploy recreates it.
+describe("deployProyecto — Volúmenes nuevos", () => {
+  const rutaHost = "/var/vicagr/repos/acme/web-app/volumes/uploads";
+  const conVolumen = {
+    ...baseParams,
+    tipo: "image",
+    imagenUrl: "wordpress:6",
+    volumenes: [{ rutaHost, rutaContenedor: "/var/www/html/wp-content" }],
+  };
+  const ordenDe = (mock: { mock: { invocationCallOrder: number[] } }) =>
+    mock.mock.invocationCallOrder[0];
+  const composeArgs = () =>
+    mockSpawn.mock.calls.map(([, args]) => (args as string[]).join(" "));
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue("");
+    mockUnlink.mockResolvedValue(undefined);
+    mockReaddir.mockResolvedValue([]);
+    mockEjecutar.mockResolvedValue("");
+    mockEncadenar.mockResolvedValue("");
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => cb(null, "", ""),
+    );
+  });
+
+  it("copia al Volumen vacío lo que el contenedor en marcha tiene en esa ruta, antes de recrearlo", async () => {
+    mockListContainers.mockResolvedValue([{ Id: "previo123", Labels: {} }]);
+
+    await deployProyecto(conVolumen);
+
+    expect(mockEncadenar).toHaveBeenCalledWith(
+      {
+        comando: "docker",
+        args: ["cp", "previo123:/var/www/html/wp-content/.", "-"],
+      },
+      {
+        comando: "docker",
+        args: [
+          "run",
+          "--rm",
+          "-i",
+          "--network",
+          "none",
+          "-v",
+          `${rutaHost}:/destino`,
+          "busybox:1.37.0",
+          "tar",
+          "-x",
+          "-C",
+          "/destino",
+        ],
+      },
+      expect.anything(),
+    );
+    expect(ordenDe(mockEncadenar)).toBeLessThan(ordenDe(mockSpawn));
+  });
+
+  it("no toca un Volumen que ya tiene ficheros", async () => {
+    mockReaddir.mockResolvedValue(["2026"]);
+    mockListContainers.mockResolvedValue([{ Id: "previo123", Labels: {} }]);
+
+    await deployProyecto(conVolumen);
+
+    expect(mockEncadenar).not.toHaveBeenCalled();
+  });
+
+  it("en el primer deploy copia desde la imagen y borra el contenedor temporal", async () => {
+    mockEjecutar.mockImplementation(async (_cmd: string, args: string[]) =>
+      args[0] === "create" ? "temporal456\n" : "",
+    );
+
+    await deployProyecto(conVolumen);
+
+    expect(composeArgs()[0]).toMatch(/ pull$/);
+    expect(mockEjecutar).toHaveBeenCalledWith(
+      "docker",
+      ["create", "wordpress:6"],
+      expect.anything(),
+    );
+    expect(mockEncadenar.mock.calls[0][0].args).toEqual([
+      "cp",
+      "temporal456:/var/www/html/wp-content/.",
+      "-",
+    ]);
+    expect(mockEjecutar).toHaveBeenCalledWith(
+      "docker",
+      ["rm", "-f", "temporal456"],
+      expect.anything(),
+    );
+  });
+
+  it("un Proyecto con build construye la imagen antes de copiar desde ella", async () => {
+    mockEjecutar.mockImplementation(async (_cmd: string, args: string[]) =>
+      args[0] === "create" ? "temporal456\n" : "",
+    );
+
+    await deployProyecto({ ...conVolumen, tipo: "dockerfile" });
+
+    expect(composeArgs()[0]).toMatch(/ build$/);
+    expect(mockEjecutar).toHaveBeenCalledWith(
+      "docker",
+      ["create", "acme-web-app-app"],
+      expect.anything(),
+    );
+  });
+
+  it("si la ruta no existe en el contenedor deja el Volumen vacío y sigue", async () => {
+    mockListContainers.mockResolvedValue([{ Id: "previo123", Labels: {} }]);
+    mockEncadenar.mockRejectedValue(
+      new ErrorProceso(
+        "docker terminó con código 1:\nError response from daemon: Could not find the file /var/www/html/wp-content/. in container previo123",
+        1,
+        "",
+      ),
+    );
+
+    await expect(deployProyecto(conVolumen)).resolves.toBeDefined();
+  });
+
+  it("si la copia falla, el deploy se detiene sin recrear el contenedor y el Volumen queda vacío", async () => {
+    mockListContainers.mockResolvedValue([{ Id: "previo123", Labels: {} }]);
+    mockEncadenar.mockRejectedValue(
+      new ErrorProceso("docker terminó con código 1:\nno space left", 1, ""),
+    );
+
+    await expect(deployProyecto(conVolumen)).rejects.toThrow("no space left");
+
+    expect(mockSpawn).not.toHaveBeenCalled();
+    // Half a copy must not pass for a seeded Volumen on the next deploy.
+    expect(mockEjecutar).toHaveBeenCalledWith(
+      "docker",
+      expect.arrayContaining(["-v", `${rutaHost}:/destino`, "find"]),
+      expect.anything(),
+    );
+  });
+
+  // Docker follows a link in a bind source on the host: a repo with
+  // `volumes -> /etc` would mount the VPS's /etc, and the helpers act as root.
+  it("un enlace simbólico en la ruta del Volumen cancela el deploy sin montar nada", async () => {
+    const original = mockLstat.getMockImplementation();
+    onTestFinished(() => {
+      mockLstat.mockImplementation(original!);
+    });
+    mockLstat.mockImplementation(async (ruta: string) => ({
+      isSymbolicLink: () => /[\\/]volumes$/.test(ruta),
+    }));
+
+    await expect(deployProyecto(conVolumen)).rejects.toThrow(
+      "enlace simbólico",
+    );
+
+    expect(mockMkdir).not.toHaveBeenCalledWith(rutaHost, expect.anything());
+    expect(mockEncadenar).not.toHaveBeenCalled();
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it("los Proyectos de tipo compose no siembran: el Panel no monta sus Volúmenes", async () => {
+    await deployProyecto({ ...baseParams, volumenes: conVolumen.volumenes });
+
+    expect(mockEncadenar).not.toHaveBeenCalled();
+  });
+});
+
+// `docker compose up -d` returns as soon as the containers are created: one
+// that dies two seconds later used to count as a successful deploy.
+describe("deployProyecto — espera a que los contenedores estén sanos", () => {
+  const contenedor = (servicio: string, State: string, Status: string) => ({
+    Id: `id-${servicio}`,
+    State,
+    Status,
+    Labels: { "com.docker.compose.service": servicio },
+  });
+  // The health check is the only listing of every container of the Proyecto:
+  // the network step asks for the running ones and Traefik's has no filter.
+  type Listado = { all?: boolean; filters?: { label?: string[] } };
+  const esSalud = (opts: Listado) =>
+    !!opts.all &&
+    !!opts.filters?.label?.[0]?.startsWith("com.docker.compose.project=");
+  const lecturas = (...sucesivas: ReturnType<typeof contenedor>[][]) => {
+    let i = 0;
+    mockListContainers.mockImplementation(async (opts: Listado) =>
+      esSalud(opts) ? sucesivas[Math.min(i++, sucesivas.length - 1)] : [],
+    );
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.assign(TIEMPOS_SALUD, sinEspera);
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue("");
+    mockUnlink.mockResolvedValue(undefined);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) =>
+        args[0] === "logs"
+          ? cb(null, "", "Error: Cannot find module 'next'")
+          : cb(null, "", ""),
+    );
+  });
+
+  it("falla si un Servicio sale con error tras arrancar, con sus últimas líneas de log", async () => {
+    lecturas([
+      contenedor("db", "running", "Up 3 seconds"),
+      contenedor("web", "exited", "Exited (1) 1 second ago"),
+    ]);
+
+    await expect(deployProyecto(baseParams)).rejects.toThrow(
+      /El Servicio «web» no arrancó: Exited \(1\) 1 second ago[\s\S]*Cannot find module 'next'/,
+    );
+  });
+
+  it("falla si un Servicio queda en bucle de reinicios o unhealthy", async () => {
+    lecturas([contenedor("web", "restarting", "Restarting (1) 1 second ago")]);
+    await expect(deployProyecto(baseParams)).rejects.toThrow("«web»");
+
+    lecturas([contenedor("web", "running", "Up 40 seconds (unhealthy)")]);
+    await expect(deployProyecto(baseParams)).rejects.toThrow("«web»");
+  });
+
+  it("espera mientras el healthcheck está arrancando y termina bien cuando pasa a healthy", async () => {
+    lecturas(
+      [contenedor("web", "running", "Up 1 second (health: starting)")],
+      [contenedor("web", "running", "Up 2 seconds (health: starting)")],
+      [contenedor("web", "running", "Up 3 seconds (healthy)")],
+    );
+
+    await expect(deployProyecto(baseParams)).resolves.toBeDefined();
+
+    const comprobaciones = mockListContainers.mock.calls.filter(([opts]) =>
+      esSalud(opts as Listado),
+    );
+    expect(comprobaciones).toHaveLength(3);
+  });
+
+  it("un Servicio que termina bien (migraciones) no cuenta como fallo", async () => {
+    lecturas([
+      contenedor("web", "running", "Up 3 seconds"),
+      contenedor("migrar", "exited", "Exited (0) 1 second ago"),
+    ]);
+
+    await expect(deployProyecto(baseParams)).resolves.toBeDefined();
+  });
+
+  it("falla si el healthcheck sigue arrancando pasado el máximo", async () => {
+    Object.assign(TIEMPOS_SALUD, { maximoMs: 0 });
+    lecturas([contenedor("web", "running", "Up 1 second (health: starting)")]);
+
+    await expect(deployProyecto(baseParams)).rejects.toThrow(
+      "«web» sigue sin estar sano",
+    );
+  });
+
+  it("cancelar el deploy corta la espera", async () => {
+    Object.assign(TIEMPOS_SALUD, { intervaloMs: 60_000, maximoMs: 600_000 });
+    lecturas([contenedor("web", "running", "Up 1 second (health: starting)")]);
+    const cancelar = new AbortController();
+    setTimeout(() => cancelar.abort("Cancelado"), 20);
+
+    await expect(
+      deployProyecto({ ...baseParams, signal: cancelar.signal }),
+    ).rejects.toThrow();
+  });
+
+  it.each(["dockerfile", "nodejs", "image"])(
+    "%s: el contenedor vuelve a arrancar solo tras un reinicio de la VPS",
+    async (tipo) => {
+      mockListContainers.mockResolvedValue([]);
+      await deployProyecto({ ...baseParams, tipo, imagenUrl: "nginx:1.27" });
+
+      const compose = mockWriteFile.mock.calls.find(
+        ([ruta]) =>
+          ruta === "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+      );
+      expect(compose?.[1]).toContain("    restart: unless-stopped");
+    },
+  );
+});
+
+// One runaway container must not starve every other Cliente on the VPS.
+describe("deployProyecto — límites de recursos", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue("");
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => cb(null, "", ""),
+    );
+  });
+
+  const composeGenerado = () =>
+    mockWriteFile.mock.calls.find(
+      ([ruta]) =>
+        ruta === "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+    )?.[1] as string | undefined;
+
+  it.each(["dockerfile", "nodejs", "image"])(
+    "%s: el compose generado limita memoria y CPU y no deja ganar privilegios",
+    async (tipo) => {
+      await deployProyecto({
+        ...baseParams,
+        tipo,
+        imagenUrl: "nginx:1.27",
+        limites: { memoriaMb: 512, cpus: 0.5 },
+      });
+
+      expect(composeGenerado()).toContain(
+        [
+          '    mem_limit: "512m"',
+          '    cpus: "0.5"',
+          "    security_opt:",
+          '      - "no-new-privileges:true"',
+        ].join("\n"),
+      );
+    },
+  );
+
+  it("sin límites no los escribe", async () => {
+    await deployProyecto({ ...baseParams, tipo: "image", imagenUrl: "nginx" });
+
+    expect(composeGenerado()).not.toContain("mem_limit");
+  });
+});
+
+// The Proyecto's Volúmenes live inside the folder the repository is cloned to.
+describe("deployProyecto — Volúmenes dentro del clon", () => {
+  const gitArgs = () =>
+    mockExecFile.mock.calls
+      .filter(([cmd]) => cmd === "git")
+      .map(([, args]) => (args as string[]).join(" "));
+  const escritos = (ruta: string) =>
+    mockWriteFile.mock.calls.find(([r]) => r === ruta)?.[1] as
+      string | undefined;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue("");
+    mockReaddir.mockResolvedValue(["ya-hay-datos"]);
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+  });
+
+  const git = (yaClonado: boolean) =>
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        args: string[],
+        cb: (err: Error | null, stdout: string, stderr: string) => void,
+      ) =>
+        args.includes("--is-inside-work-tree") && !yaClonado
+          ? cb(new Error("not a git repository"), "", "")
+          : cb(null, "abc1234\n", ""),
+    );
+
+  // `git clone` refuses a folder that already has files, and a Volumen
+  // created before the first deploy puts one there.
+  it("el primer deploy no usa git clone: inicia el repositorio en la carpeta, tenga o no ficheros", async () => {
+    git(false);
+
+    await deployProyecto(baseParams);
+
+    const repo = "/var/vicagr/repos/acme/web-app";
+    expect(gitArgs()).not.toContainEqual(expect.stringMatching(/^clone /));
+    expect(gitArgs()).toEqual(
+      expect.arrayContaining([
+        `init ${repo}`,
+        `-C ${repo} remote add origin https://github.com/org/repo`,
+        `-C ${repo} fetch origin`,
+      ]),
+    );
+  });
+
+  it("en los siguientes apunta el remoto a la URL actual, por si se cambió el repositorio del Proyecto", async () => {
+    git(true);
+
+    await deployProyecto(baseParams);
+
+    expect(gitArgs()).toContain(
+      "-C /var/vicagr/repos/acme/web-app remote set-url origin https://github.com/org/repo",
+    );
+    expect(gitArgs()).not.toContainEqual(expect.stringMatching(/^init /));
+  });
+
+  it("nodejs: los Volúmenes no entran en la imagen", async () => {
+    git(true);
+
+    await deployProyecto({ ...baseParams, tipo: "nodejs" });
+
+    expect(
+      escritos("/var/vicagr/repos/acme/.panel/web-app.Dockerfile.dockerignore"),
+    ).toBe(".git\nvolumes\n");
+  });
+
+  const ignorePropio = "/var/vicagr/repos/acme/web-app/Dockerfile.dockerignore";
+  const conVolumen = {
+    ...baseParams,
+    tipo: "dockerfile",
+    volumenes: [
+      {
+        rutaHost: "/var/vicagr/repos/acme/web-app/volumes/uploads",
+        rutaContenedor: "/app/uploads",
+      },
+    ],
+  };
+
+  it("dockerfile con Volúmenes: escribe un dockerignore junto al Dockerfile con las reglas del repositorio y los Volúmenes", async () => {
+    git(true);
+    mockReadFile.mockImplementation(async (ruta: string) => {
+      if (ruta === "/var/vicagr/repos/acme/web-app/.dockerignore")
+        return "node_modules\n";
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+
+    await deployProyecto(conVolumen);
+
+    expect(escritos(ignorePropio)).toBe(
+      "# generado por vicagr-panel\nnode_modules\n\nvolumes\n",
+    );
+  });
+
+  it("dockerfile con Volúmenes: no pisa un dockerignore que el repositorio ya trae para ese Dockerfile, y lo avisa", async () => {
+    git(true);
+    mockReadFile.mockImplementation(async (ruta: string) =>
+      ruta === ignorePropio ? "dist\n" : "",
+    );
+    const lineas: string[] = [];
+
+    await deployProyecto({ ...conVolumen, onLog: (l) => lineas.push(l) });
+
+    expect(escritos(ignorePropio)).toBeUndefined();
+    expect(lineas.join("\n")).toContain("añade «volumes» a");
+  });
+
+  it("dockerfile sin Volúmenes no escribe nada en el repositorio", async () => {
+    git(true);
+
+    await deployProyecto({ ...baseParams, tipo: "dockerfile" });
+
+    expect(escritos(ignorePropio)).toBeUndefined();
+  });
+});
+
+describe("borrarFicherosProyecto", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUnlink.mockResolvedValue(undefined);
+    mockEjecutar.mockResolvedValue("");
+  });
+
+  it("borra siempre los ficheros con las variables descifradas y los que generó el Panel", async () => {
+    await borrarFicherosProyecto("acme", "web-app", false);
+
+    const borrados = mockUnlink.mock.calls.map(([ruta]) => ruta);
+    expect(borrados).toEqual(
+      expect.arrayContaining([
+        "/var/vicagr/repos/acme/web-app/.env",
+        "/var/vicagr/repos/acme/web-app/.env.local",
+        "/var/vicagr/repos/acme/.panel/web-app.env",
+        "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+        "/var/vicagr/repos/acme/.panel/web-app.deploy_key",
+      ]),
+    );
+  });
+
+  it("sin pedirlo no borra la carpeta del Proyecto, que guarda sus datos", async () => {
+    await borrarFicherosProyecto("acme", "web-app", false);
+
+    expect(mockEjecutar).not.toHaveBeenCalled();
+  });
+
+  it("con borrarDatos borra la carpeta del Proyecto como root, solo la suya", async () => {
+    await borrarFicherosProyecto("acme", "web-app", true);
+
+    expect(mockEjecutar).toHaveBeenCalledWith(
+      "docker",
+      expect.arrayContaining([
+        "-v",
+        "/var/vicagr/repos/acme:/destino",
+        "rm",
+        "-rf",
+        "/destino/web-app",
+      ]),
+      expect.anything(),
+    );
+  });
+
+  it("que falte un fichero o falle el borrado no impide eliminar el Proyecto", async () => {
+    mockUnlink.mockRejectedValue(new Error("ENOENT"));
+    mockEjecutar.mockRejectedValue(new Error("docker"));
+
+    await expect(
+      borrarFicherosProyecto("acme", "web-app", true),
+    ).resolves.toBeUndefined();
+  });
+});
+
+// Running as root inside the container turns any bug in the app into root on
+// its files and volumes.
+describe("deployProyecto — Node.js sin root", () => {
+  const rutaHost = "/var/vicagr/repos/acme/web-app/volumes/uploads";
+  const nodejs = {
+    ...baseParams,
+    tipo: "nodejs",
+    buildCommand: "npm run build",
+    startCommand: "npm start",
+    volumenes: [{ rutaHost, rutaContenedor: "/app/uploads" }],
+  };
+  const dockerfile = () =>
+    mockWriteFile.mock.calls.find(
+      ([ruta]) => ruta === "/var/vicagr/repos/acme/.panel/web-app.Dockerfile",
+    )?.[1] as string;
+  const chowns = () =>
+    mockEjecutar.mock.calls.filter(([, args]) =>
+      (args as string[]).includes("chown"),
+    );
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue("");
+    mockUnlink.mockResolvedValue(undefined);
+    mockReaddir.mockResolvedValue(["ya-hay-datos"]);
+    mockStat.mockResolvedValue({ uid: 0 });
+    mockEjecutar.mockResolvedValue("");
+    mockListContainers.mockResolvedValue([]);
+    mockGetNetwork.mockReturnValue({ connect: mockConnect });
+    mockSpawn.mockImplementation(() => makeSpawnResult(0));
+    mockExecFile.mockImplementation(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, stdout: string, stderr: string) => void,
+      ) => cb(null, "e881352abcdef0123456789\n", ""),
+    );
+  });
+
+  // With it the deploy only ends well once the app is listening, and a
+  // Proyecto whose app stops answering shows up as fallen.
+  it("el compose de Node.js comprueba que la app escucha en su puerto", async () => {
+    await deployProyecto({ ...nodejs, puerto: 4000 });
+
+    const compose = mockWriteFile.mock.calls.find(
+      ([ruta]) =>
+        ruta === "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+    )?.[1] as string;
+    expect(compose).toContain(
+      [
+        "    healthcheck:",
+        '      test: ["CMD-SHELL", "nc -z 127.0.0.1 4000"]',
+        "      interval: 10s",
+        "      timeout: 5s",
+        "      retries: 12",
+        "      start_period: 20s",
+      ].join("\n"),
+    );
+  });
+
+  it.each(["dockerfile", "image"])(
+    "%s: no añade healthcheck: su imagen puede no tener con qué comprobarlo",
+    async (tipo) => {
+      await deployProyecto({ ...nodejs, tipo, imagenUrl: "nginx:1.27" });
+
+      const compose = mockWriteFile.mock.calls.find(
+        ([ruta]) =>
+          ruta === "/var/vicagr/repos/acme/.panel/web-app.docker-compose.yml",
+      )?.[1] as string;
+      expect(compose).not.toContain("healthcheck:");
+    },
+  );
+
+  it("la imagen generada se ejecuta con el usuario node y sus ficheros son suyos", async () => {
+    await deployProyecto(nodejs);
+
+    const lineas = dockerfile().split("\n");
+    expect(lineas).toContain("COPY --from=builder --chown=node:node /app .");
+    expect(lineas.indexOf("USER node")).toBeGreaterThan(
+      lineas.indexOf("FROM node:22-alpine AS runner"),
+    );
+    expect(lineas.indexOf("USER node")).toBeLessThan(
+      lineas.findIndex((l) => l.startsWith("CMD ")),
+    );
+  });
+
+  // The app used to write there as root; as node it could no longer write.
+  it("un Volumen que no es del usuario node se le entrega antes de arrancar", async () => {
+    await deployProyecto(nodejs);
+
+    expect(chowns()).toHaveLength(1);
+    expect(chowns()[0][1]).toEqual(
+      expect.arrayContaining([
+        "-v",
+        `${rutaHost}:/destino`,
+        "chown",
+        "-R",
+        "1000:1000",
+        "/destino",
+      ]),
+    );
+    expect(mockEjecutar.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSpawn.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("un Volumen que ya es del usuario node no se recorre en cada deploy", async () => {
+    mockStat.mockResolvedValue({ uid: 1000 });
+
+    await deployProyecto(nodejs);
+
+    expect(chowns()).toHaveLength(0);
+  });
+
+  it.each(["dockerfile", "image"])(
+    "%s: no toca el propietario de los Volúmenes: su imagen decide el usuario",
+    async (tipo) => {
+      await deployProyecto({ ...nodejs, tipo, imagenUrl: "nginx:1.27" });
+
+      expect(chowns()).toHaveLength(0);
+    },
+  );
 });

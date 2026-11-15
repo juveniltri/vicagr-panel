@@ -59,3 +59,14 @@ export async function tokenOidc<T extends object>(
     oidc: true,
   };
 }
+
+// With Pocket ID configured the password is only the way back in when it is
+// down, through the emergency access (SSH tunnel to 127.0.0.1:3000). Traefik
+// always adds X-Real-Ip and a client cannot strip it, so its absence means the
+// request did not come from the internet.
+export function passwordPermitida(
+  headers: Headers,
+  oidcActivo: boolean,
+): boolean {
+  return !oidcActivo || !headers.has("x-real-ip");
+}

@@ -80,7 +80,7 @@ Esta regla es un gate hard en CI. Ver `docs/testing-strategy.md` para el mapa co
 ### Herramientas
 
 - Unit / Integration: **Vitest**
-- E2E: **Playwright**
+- E2E: **Playwright** — `npm run test:e2e` (`e2e/`, `playwright.config.ts`) levanta el stack de producción de `npm run guia` con la carpeta de repos compartida con el host (`e2e/compose.e2e.yml`), un usuario y un buzón para los avisos, y prueba de punta a punta deploy, variables, Volúmenes, gestor de ficheros, avisos de caída y recuperación, borrado, plantilla WordPress y accesibilidad (axe). Necesita Docker y los puertos 80, 443 y 5434; tarda unos 5-10 min. `E2E_CONSERVAR=1` deja el stack en https://localhost y `npm run test:e2e:limpiar` lo quita. Pasarla antes de cada release
 - Accesibilidad: **axe-core** integrado en Playwright
 - Observabilidad de errores: **Sentry**
 
@@ -445,6 +445,12 @@ Ver `CONTEXT.md` para el glosario completo.
     (1586 tests). Pendiente en la VPS de desarrollo: verificar los backups de Proyectos (`production.md` § B2b) y certificados reales con Cloudflare.
   - Versión 2.5.0 (`release/2.5.0`): login con Pocket ID (OIDC opcional, `User.oidcSub` vinculado a mano, sesión de 12 h, guía en `production.md` § F) y fuentes locales. Probado en real: Pocket ID en la VPS de producción y login en el Panel de desarrollo. Pendiente: conectar el Panel de producción y restaurar un backup de Pocket ID.
   - Versión 3.0.0 (`release/3.0.0`): renombrado `vicalba` → `vicagr` en todo (`/var/vicagr`, red `vicagr-net`, contenedores `vicagr-db`/`vicagr-panel`, BD y usuario `vicagr`, proyecto de compose `vicagr`, host de restic). Exige migrar cada VPS con `production.md` § B1a; probado en la VPS de desarrollo. Las cabeceras antiguas `# generado por vicalba-panel` de Traefik se siguen reconociendo (HACK en `src/lib/traefik/config.ts`, quitar en la release siguiente). Pendiente: migrar producción, `restic rewrite --new-host` de las copias antiguas y renombrar el repositorio en GitHub.
-- **En construcción:** —
+- **En construcción:** versión 3.1.0 (`feature/3.1.0`, desde `develop`; todo el trabajo de la auditoría del 14/11/2026, issues #87–#114, va a esta rama hasta llevarla a `develop`). Detalle para usuarios en `CHANGELOG.md` y pasos en `production.md` § B1b.
+  - Vigilancia (`src/lib/vigilancia.ts`, cada minuto desde `src/instrumentation.ts`): el Estado sigue a Docker (un Servicio con salida distinta de 0/143/137, en bucle de reinicios o `unhealthy` pasa el Proyecto a `error` a la segunda lectura), avisos «Proyecto caído/recuperado» y «Disco casi lleno» (85 %, se recupera al bajar del 80 %) por los canales de notificación, y latido a `LATIDO_URL` (healthchecks.io) solo con `/api/health` en verde
+  - Deploy: espera a que los contenedores sigan en marcha y estén sanos (`TIEMPOS_SALUD`); sin `--force-recreate`; composes generados con `restart: unless-stopped`, `mem_limit`/`cpus` por Proyecto (`limiteMemoriaMb`/`limiteCpus`, 1 GB y 1 CPU) y `no-new-privileges`; Node.js como usuario `node` con healthcheck de puerto (`nc`) y entrega de los Volúmenes al uid 1000; Volúmenes vacíos sembrados desde el contenedor o la imagen; `git init` + fetch en vez de `git clone`; dockerignore con `volumes`; known_hosts en `REPOS_DIR/.git-known_hosts`
+  - Variables: `.env` entrecomillado para Compose (`valorEnvCompose`), `.env.local` para dotenv (`valorEnvApp`), `$` como `$$` en YAML; compose pegado con `<proyecto>.env` propio (`apuntarEnvFile`)
+  - Seguridad: gestor de ficheros sin enlaces simbólicos (`resolverRutaSinEnlaces`) y en streaming (máx. 2 GB); cookie de sesión `SameSite=Strict` y límite por cuenta; con Pocket ID la contraseña solo vale sin `X-Real-Ip` (túnel SSH, `passwordPermitida`); webhook con sha de 40 hex y cuerpo máx. 25 MB; `/api/health` sin sesión solo da el estado; nombres `<cliente>-<proyecto>` únicos
+  - Además: eliminar un Proyecto borra sus contenedores y ficheros (datos solo con casilla), plantillas WordPress y Next.js al crear, imagen del Panel con `npm ci` y sin dependencias de dev
+  - Aplazados: #109 (secreto de webhook por Proyecto) y #112 (imagen del Panel desde la CI). Sin hacer: guía de usuario y capturas
 - **Bloqueado / pendiente:** ver `docs/roadmap.md`
-- **Próximo hito:** verificar la 2.4.0 y la 2.5.0 en las VPS; después E2E, alerta de disco, CSP estricta y cobertura (ver `docs/roadmap.md`)
+- **Próximo hito:** probar la 3.1.0 en la VPS de desarrollo y publicarla; verificar la 2.4.0 y la 2.5.0 en las VPS; después E2E, CSP estricta y cobertura (ver `docs/roadmap.md`)

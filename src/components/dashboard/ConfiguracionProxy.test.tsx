@@ -186,6 +186,9 @@ describe("ConfiguracionProxy", () => {
     expect(await screen.findByLabelText("Log de Traefik")).toHaveTextContent(
       "INF Starting provider",
     );
+    // The log can show before the transition ends: a click on the still
+    // disabled button would be lost.
+    await waitFor(() => expect(boton).toBeEnabled());
     fireEvent.click(boton);
     await waitFor(() =>
       expect(screen.getByLabelText("Log de Traefik")).toHaveTextContent(

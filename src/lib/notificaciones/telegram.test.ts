@@ -153,4 +153,35 @@ describe("enviarTelegram — avisos de backup", () => {
     );
     expect(body.text.split("\n")[0]).toBe("❌ Backup error — panel");
   });
+
+  it("una caída se titula «Proyecto caído» y no lleva rama ni commit", async () => {
+    await enviarTelegram("token", "chat", {
+      ...payload,
+      evento: "servicio",
+      resultado: "error",
+      output: "worker: Exited (1) 2 minutes ago",
+    });
+    const body = JSON.parse(
+      (mockFetch.mock.calls[0][1] as { body: string }).body,
+    );
+    expect(body.text.split("\n")[0]).toBe(
+      `❌ Proyecto caído — ${payload.proyectoNombre}`,
+    );
+    expect(body.text).not.toContain("Rama:");
+    expect(body.text).toContain("worker: Exited (1) 2 minutes ago");
+  });
+
+  it("la recuperación se titula «Proyecto recuperado»", async () => {
+    await enviarTelegram("token", "chat", {
+      ...payload,
+      evento: "servicio",
+      resultado: "exito",
+    });
+    const body = JSON.parse(
+      (mockFetch.mock.calls[0][1] as { body: string }).body,
+    );
+    expect(body.text.split("\n")[0]).toBe(
+      `✅ Proyecto recuperado — ${payload.proyectoNombre}`,
+    );
+  });
 });

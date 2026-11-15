@@ -1,15 +1,28 @@
 import { execFile, spawn } from "node:child_process";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
+import { setTimeout as esperar } from "node:timers/promises";
 import { promisify } from "node:util";
 import { env } from "@/env";
+import { IMAGEN_AUXILIAR } from "@/lib/backups/comandos";
+import { ejecutar, encadenar, ErrorProceso } from "@/lib/backups/procesos";
 import { logger } from "@/lib/logger";
+import { volumenSinEnlaces } from "@/lib/volumenes";
 import {
+  apuntarEnvFile,
   encontrarServicioPorPuerto,
   generarOverrideLogging,
   LIMITE_LOGS,
 } from "@/lib/compose";
 import { docker } from "./client";
 import { asegurarRedCliente } from "./networks";
+import { estadoDeContenedor } from "./proyectos";
 import { conectarTraefikARed } from "./traefik";
 
 const log = logger.child({ module: "docker" });
@@ -23,10 +36,20 @@ function substituirVarsEnCompose(
   content: string,
   vars: Array<{ clave: string; valor: string }>,
 ): string {
+  // Compose still interpolates the result, so a $ in the value becomes $$.
+  // Replacer functions: a string replacement would expand $& and $$ itself.
   return vars.reduce(
-    (acc, { clave, valor }) => acc.replaceAll(`\${${clave}}`, valor),
+    (acc, { clave, valor }) =>
+      acc.replaceAll(`\${${clave}}`, () => valor.replaceAll("$", () => "$$")),
     content,
   );
+}
+
+// Host keys are remembered (trust on first use): the first connection stores
+// the key and a different one later makes git fail. With /dev/null as
+// known_hosts every connection accepted whatever server answered.
+export function comandoSshGit(keyFilePath: string): string {
+  return `ssh -i ${keyFilePath} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=${env.REPOS_DIR}/.git-known_hosts`;
 }
 
 export async function ensureRepo(
@@ -44,9 +67,23 @@ export async function ensureRepo(
       opts,
     );
     onLog?.("→ Repositorio ya clonado, actualizando...");
+    // The Proyecto's repository may have been changed since the last deploy.
+    await execFileAsync(
+      "git",
+      ["-C", repoDir, "remote", "set-url", "origin", repoUrl],
+      opts,
+    );
   } catch {
     onLog?.("→ Clonando repositorio...");
-    await execFileAsync("git", ["clone", repoUrl, repoDir], opts);
+    // Not `git clone`: it refuses a folder that already has files, and the
+    // Proyecto's Volúmenes live in it. The callers fetch and check out next.
+    await mkdir(repoDir, { recursive: true });
+    await execFileAsync("git", ["init", repoDir], opts);
+    await execFileAsync(
+      "git",
+      ["-C", repoDir, "remote", "add", "origin", repoUrl],
+      opts,
+    );
   }
 }
 
@@ -190,9 +227,12 @@ function generarDockerfileNodejs(
       "FROM node:22-alpine AS runner",
       "WORKDIR /app",
       "ENV NODE_ENV=production",
-      "COPY --from=builder /app .",
+      "COPY --from=builder --chown=node:node /app .",
+      // Not root: a bug in the app must not be root on its files and volumes.
+      "USER node",
       `EXPOSE ${puerto}`,
-      `CMD ["sh", "-c", "${startCmd}"]`,
+      // The exec form is JSON: quotes in the command must be escaped.
+      `CMD ["sh", "-c", ${JSON.stringify(startCmd)}]`,
     ].join("\n");
   }
 
@@ -203,15 +243,39 @@ function generarDockerfileNodejs(
     "COPY . .",
     "RUN npm ci",
     `RUN ${buildCmd}`,
+    "RUN chown -R node:node /app",
+    "USER node",
     `EXPOSE ${puerto}`,
-    `CMD ["sh", "-c", "${startCmd}"]`,
+    `CMD ["sh", "-c", ${JSON.stringify(startCmd)}]`,
   ].join("\n");
+}
+
+const SIN_COMILLAS = /^[A-Za-z0-9_./:@%+,=-]*$/;
+
+// Unquoted, Compose expands $ and cuts the value at " #". Double quotes with
+// \\ \" \$ is the only form that round-trips every value (checked against
+// Compose v5: single quotes break on a trailing backslash).
+function valorEnvCompose(valor: string): string {
+  if (SIN_COMILLAS.test(valor)) return valor;
+  return `"${valor.replace(/[\\"$]/g, "\\$&")}"`;
+}
+
+// .env.local is read by the app's own dotenv (Next, Vite), which cannot escape
+// a quote and expands $: wrap in a quote the value does not use and escape $
+// (checked against @next/env). A value with ', ` and " has no faithful form.
+function valorEnvApp(valor: string): string {
+  if (SIN_COMILLAS.test(valor)) return valor;
+  const comilla = ["'", "`", '"'].find((c) => !valor.includes(c)) ?? "";
+  return `${comilla}${valor.replaceAll("$", () => "\\$")}${comilla}`;
 }
 
 function serializarEnvFile(
   variables: Array<{ clave: string; valor: string }>,
+  formato: (valor: string) => string = valorEnvCompose,
 ): string {
-  return variables.map(({ clave, valor }) => `${clave}=${valor}`).join("\n");
+  return variables
+    .map(({ clave, valor }) => `${clave}=${formato(valor)}`)
+    .join("\n");
 }
 
 function serializarMapaYaml(
@@ -224,7 +288,8 @@ function serializarMapaYaml(
     cabecera,
     ...variables.map(
       ({ clave, valor }) =>
-        `${indent}${clave}: "${valor.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
+        // $$ so Compose does not interpolate the value
+        `${indent}${clave}: "${valor.replace(/[\\"]/g, "\\$&").replaceAll("$", () => "$$")}"`,
     ),
   ];
 }
@@ -248,6 +313,84 @@ function serializarVolumes(
   ];
 }
 
+// How long a deploy watches the new containers before calling it a success.
+export const TIEMPOS_SALUD = {
+  // A container that is going to crash at startup usually does it within this.
+  observacionMs: 10_000,
+  intervaloMs: 2_000,
+  // Ceiling for a healthcheck that is still "starting".
+  maximoMs: 180_000,
+};
+
+// `docker compose up -d` returns once the containers exist. A deploy is only
+// good if they are still up a moment later and, where there is a healthcheck,
+// healthy.
+async function esperarContenedoresSanos(
+  projectSlug: string,
+  onLog?: (line: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const inicio = Date.now();
+  const nombre = (c: { Labels?: Record<string, string>; Id: string }) =>
+    c.Labels?.["com.docker.compose.service"] ?? c.Id.slice(0, 12);
+  onLog?.("→ Comprobando que los contenedores siguen en marcha...");
+  for (;;) {
+    const contenedores = await docker.listContainers({
+      all: true,
+      filters: { label: [`com.docker.compose.project=${projectSlug}`] },
+    });
+    const caido = contenedores.find((c) => {
+      const estado = estadoDeContenedor(c);
+      // "deploying" is Docker's restarting: a crash loop.
+      return estado === "error" || estado === "deploying";
+    });
+    if (caido) {
+      const { stdout, stderr } = await execFileAsync("docker", [
+        "logs",
+        "--tail",
+        "20",
+        caido.Id,
+      ]).catch(() => ({ stdout: "", stderr: "" }));
+      throw new Error(
+        [
+          `El Servicio «${nombre(caido)}» no arrancó: ${caido.Status}`,
+          stdout,
+          stderr,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+    }
+    const arrancando = contenedores.find((c) =>
+      c.Status?.includes("(health: starting)"),
+    );
+    const transcurrido = Date.now() - inicio;
+    if (!arrancando && transcurrido >= TIEMPOS_SALUD.observacionMs) return;
+    if (arrancando && transcurrido >= TIEMPOS_SALUD.maximoMs)
+      throw new Error(
+        `El Servicio «${nombre(arrancando)}» sigue sin estar sano tras ${Math.round(TIEMPOS_SALUD.maximoMs / 1000)} s`,
+      );
+    await esperar(TIEMPOS_SALUD.intervaloMs, undefined, { signal });
+  }
+}
+
+type Limites = { memoriaMb: number; cpus: number };
+
+// One runaway container must not starve every other Cliente on the VPS.
+function serializarLimites(limites?: Limites): string[] {
+  if (!limites) return [];
+  return [
+    `    mem_limit: "${limites.memoriaMb}m"`,
+    `    cpus: "${limites.cpus}"`,
+    "    security_opt:",
+    '      - "no-new-privileges:true"',
+  ];
+}
+
+// Marks the <Dockerfile>.dockerignore the Panel writes into a clone, so the
+// next deploy can refresh it and never touches one that belongs to the repo.
+const CABECERA_IGNORE = "# generado por vicagr-panel";
+
 const LOGGING_YAML = [
   "    logging:",
   `      driver: ${LIMITE_LOGS.driver}`,
@@ -264,7 +407,22 @@ function generarDockerComposeConBuild(params: {
   buildArgs?: Array<{ clave: string; valor: string }>;
   variables?: Array<{ clave: string; valor: string }>;
   volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
+  limites?: Limites;
+  // Only for the image the Panel builds itself, which is known to have `nc`.
+  comprobarPuerto?: boolean;
 }): string {
+  // With it a deploy only ends well once the app is listening, and a Proyecto
+  // whose app stops answering shows up as fallen.
+  const healthcheck = params.comprobarPuerto
+    ? [
+        "    healthcheck:",
+        `      test: ["CMD-SHELL", "nc -z 127.0.0.1 ${params.puerto}"]`,
+        "      interval: 10s",
+        "      timeout: 5s",
+        "      retries: 12",
+        "      start_period: 20s",
+      ]
+    : [];
   return [
     "services:",
     "  app:",
@@ -277,6 +435,10 @@ function generarDockerComposeConBuild(params: {
     `      - "${params.puerto}"`,
     ...serializarEnvironment(params.variables ?? []),
     ...serializarVolumes(params.volumenes ?? []),
+    // Without a policy Docker leaves it down after a crash or a VPS reboot.
+    "    restart: unless-stopped",
+    ...serializarLimites(params.limites),
+    ...healthcheck,
     ...LOGGING_YAML,
   ].join("\n");
 }
@@ -286,6 +448,7 @@ function generarDockerComposeConImage(params: {
   puerto: number;
   variables?: Array<{ clave: string; valor: string }>;
   volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
+  limites?: Limites;
 }): string {
   return [
     "services:",
@@ -296,6 +459,9 @@ function generarDockerComposeConImage(params: {
     `      - "${params.puerto}"`,
     ...serializarEnvironment(params.variables ?? []),
     ...serializarVolumes(params.volumenes ?? []),
+    // Without a policy Docker leaves it down after a crash or a VPS reboot.
+    "    restart: unless-stopped",
+    ...serializarLimites(params.limites),
     ...LOGGING_YAML,
   ].join("\n");
 }
@@ -362,6 +528,149 @@ async function limpiarDisco(onLog?: (line: string) => void): Promise<void> {
   }
 }
 
+// As root in a helper container: the files belong to the app's user, which the
+// Panel (uid 1001) can neither create nor delete.
+const enVolumen = (rutaHost: string, ...comando: string[]) => ({
+  comando: "docker",
+  args: [
+    "run",
+    "--rm",
+    "-i",
+    "--network",
+    "none",
+    "-v",
+    `${rutaHost}:/destino`,
+    IMAGEN_AUXILIAR,
+    ...comando,
+  ],
+});
+
+// A Volumen is an empty host folder mounted over the container path. Without
+// this, what the image has there is hidden and what the container created at
+// runtime (uploads) is lost when the deploy recreates it. Only empty Volúmenes
+// are seeded, from the container about to be replaced or, on a first deploy,
+// from the image.
+async function sembrarVolumenesNuevos(params: {
+  volumenes: Array<{ rutaHost: string; rutaContenedor: string }>;
+  projectSlug: string;
+  composeFile: string;
+  imagen: string | null;
+  onLog?: (line: string) => void;
+  signal?: AbortSignal;
+}): Promise<void> {
+  const { projectSlug, composeFile, imagen, onLog, signal } = params;
+  const vacios: typeof params.volumenes = [];
+  for (const v of params.volumenes) {
+    // The checkout can bring a link where the Volumen goes: the compose and the
+    // helpers below would mount what it points at.
+    if (!(await volumenSinEnlaces(env.REPOS_DIR, v.rutaHost)))
+      throw new Error(
+        `El volumen ${v.rutaContenedor} pasa por un enlace simbólico en el repositorio: se cancela el deploy`,
+      );
+    await mkdir(v.rutaHost, { recursive: true });
+    if ((await readdir(v.rutaHost)).length === 0) vacios.push(v);
+  }
+  if (!vacios.length) return;
+
+  const [previo] = await docker.listContainers({
+    all: true,
+    filters: {
+      label: [
+        `com.docker.compose.project=${projectSlug}`,
+        "com.docker.compose.service=app",
+      ],
+    },
+  });
+  let origen = previo?.Id;
+  let temporal: string | undefined;
+  if (!origen) {
+    onLog?.("→ Preparando la imagen para rellenar los volúmenes nuevos...");
+    await spawnDockerCompose(
+      [
+        "compose",
+        "-p",
+        projectSlug,
+        "-f",
+        composeFile,
+        imagen ? "pull" : "build",
+      ],
+      onLog,
+      signal,
+    );
+    // Compose names the image it builds <proyecto>-<servicio>.
+    const creado = await ejecutar(
+      "docker",
+      ["create", imagen ?? `${projectSlug}-app`],
+      { signal },
+    );
+    origen = temporal = creado.trim();
+  }
+
+  try {
+    for (const { rutaHost, rutaContenedor } of vacios) {
+      onLog?.(`→ Copiando al volumen lo que había en ${rutaContenedor}...`);
+      try {
+        await encadenar(
+          {
+            comando: "docker",
+            args: ["cp", `${origen}:${rutaContenedor}/.`, "-"],
+          },
+          enVolumen(rutaHost, "tar", "-x", "-C", "/destino"),
+          { signal },
+        );
+      } catch (err) {
+        // Nothing at that path in the container: an empty Volumen is right.
+        if (
+          err instanceof ErrorProceso &&
+          /Could not find the file/i.test(err.message)
+        )
+          continue;
+        // Half a copy would pass for a seeded Volumen on the next deploy, which
+        // would then recreate the container and lose the rest.
+        const vaciar = enVolumen(
+          rutaHost,
+          "find",
+          "/destino",
+          "-mindepth",
+          "1",
+          "-delete",
+        );
+        await ejecutar(vaciar.comando, vaciar.args, {}).catch(() => {});
+        throw err;
+      }
+    }
+  } finally {
+    if (temporal)
+      await ejecutar("docker", ["rm", "-f", temporal], {}).catch(() => {});
+  }
+}
+
+// uid of the `node` user the generated Node.js image runs as.
+const UID_NODE = 1000;
+
+// The app used to run as root and wrote its Volúmenes as root; as `node` it
+// could no longer write there. Checked on the folder itself so an already
+// handed-over Volumen is not walked on every deploy.
+async function entregarVolumenesANode(
+  volumenes: Array<{ rutaHost: string }>,
+  onLog?: (line: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  for (const { rutaHost } of volumenes) {
+    const info = await stat(rutaHost).catch(() => null);
+    if (!info || info.uid === UID_NODE) continue;
+    onLog?.("→ Ajustando el propietario del volumen al usuario de la app...");
+    const entregar = enVolumen(
+      rutaHost,
+      "chown",
+      "-R",
+      `${UID_NODE}:${UID_NODE}`,
+      "/destino",
+    );
+    await ejecutar(entregar.comando, entregar.args, { signal });
+  }
+}
+
 export async function deployProyecto(params: {
   tipo: string;
   repoUrl?: string | null;
@@ -379,6 +688,7 @@ export async function deployProyecto(params: {
   startCommand?: string | null;
   puerto?: number | null;
   volumenes?: Array<{ rutaHost: string; rutaContenedor: string }>;
+  limites?: Limites;
   // Compose Servicios that routes point at; each gets "<servicio>.<proyecto>".
   serviciosConRuta?: string[];
   onLog?: (line: string) => void;
@@ -422,7 +732,7 @@ export async function deployProyecto(params: {
   const gitEnv: NodeJS.ProcessEnv = credencial
     ? {
         ...process.env,
-        GIT_SSH_COMMAND: `ssh -i ${keyFilePath} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null`,
+        GIT_SSH_COMMAND: comandoSshGit(keyFilePath),
       }
     : { ...process.env };
 
@@ -483,9 +793,9 @@ export async function deployProyecto(params: {
         // Pre-substitute ${VAR} so network/volume map keys are resolved — docker compose
         // does not interpolate variables in YAML map keys, only in values.
         const composePath = `${panelDir}/${proyectoNombre}.docker-compose.yml`;
-        const processedContent = substituirVarsEnCompose(
-          composeContent,
-          runtimeVars,
+        const processedContent = apuntarEnvFile(
+          substituirVarsEnCompose(composeContent, runtimeVars),
+          `${proyectoNombre}.env`,
         );
         await writeFile(composePath, processedContent, { encoding: "utf-8" });
         composeFile = composePath;
@@ -496,12 +806,9 @@ export async function deployProyecto(params: {
           encoding: "utf-8",
           mode: 0o600,
         });
-        // Also write as plain .env so `env_file: .env` in service definitions resolves
-        // correctly relative to the compose file's directory (panelDir).
-        await writeFile(`${panelDir}/.env`, envContent, {
-          encoding: "utf-8",
-          mode: 0o600,
-        });
+        // Left by versions before 3.1.0, which shared it between the Cliente's
+        // Proyectos. TODO: drop this cleanup once every VPS has redeployed.
+        await unlink(`${panelDir}/.env`).catch(() => {});
       } else {
         composeFile = `${repoDir}/docker-compose.yml`;
         // Always write .env next to the compose file — docker compose auto-loads it for
@@ -520,6 +827,27 @@ export async function deployProyecto(params: {
         ? dfPath
         : `${repoDir}/${dfPath}`;
       const composePath = `${panelDir}/${proyectoNombre}.docker-compose.yml`;
+      // The Volúmenes sit inside the build context: without this a `COPY . .`
+      // ships their data in the image. BuildKit reads <Dockerfile>.dockerignore
+      // instead of the context's own, so the repo's rules are carried over.
+      if (volumenes.length > 0) {
+        const ignorePropio = `${dfAbsoluto}.dockerignore`;
+        const actual = await readFile(ignorePropio, "utf-8").catch(() => null);
+        if (actual === null || actual.startsWith(CABECERA_IGNORE)) {
+          const ignoreRepo = await readFile(
+            `${repoDir}/.dockerignore`,
+            "utf-8",
+          ).catch(() => "");
+          await writeFile(
+            ignorePropio,
+            `${CABECERA_IGNORE}\n${ignoreRepo ? `${ignoreRepo.trimEnd()}\n\n` : ""}volumes\n`,
+          );
+        } else {
+          onLog?.(
+            `⚠ El repositorio trae ${dfPath}.dockerignore: añade «volumes» a ese fichero para que los volúmenes no entren en la imagen`,
+          );
+        }
+      }
       await writeFile(
         composePath,
         generarDockerComposeConBuild({
@@ -529,6 +857,7 @@ export async function deployProyecto(params: {
           buildArgs: buildVars,
           variables: runtimeVars,
           volumenes,
+          limites: params.limites,
         }),
       );
       composeFile = composePath;
@@ -543,7 +872,8 @@ export async function deployProyecto(params: {
         // Write to .env.local in the repo so COPY . . picks it up during build.
         // The multi-stage Dockerfile deletes it before the runner stage copies,
         // so the deployed image stays clean.
-        await writeFile(`${repoDir}/.env.local`, serializarEnvFile(buildVars), {
+        const envLocal = serializarEnvFile(buildVars, valorEnvApp);
+        await writeFile(`${repoDir}/.env.local`, envLocal, {
           encoding: "utf-8",
           mode: 0o600,
         });
@@ -562,7 +892,7 @@ export async function deployProyecto(params: {
       ).catch(() => "");
       await writeFile(
         `${dfGenerado}.dockerignore`,
-        `${ignoreRepo ? `${ignoreRepo.trimEnd()}\n\n` : ""}.git\n`,
+        `${ignoreRepo ? `${ignoreRepo.trimEnd()}\n\n` : ""}.git\nvolumes\n`,
       );
       await writeFile(
         composePath,
@@ -572,6 +902,8 @@ export async function deployProyecto(params: {
           puerto,
           variables: runtimeVars,
           volumenes,
+          limites: params.limites,
+          comprobarPuerto: true,
         }),
       );
       composeFile = composePath;
@@ -585,6 +917,7 @@ export async function deployProyecto(params: {
           puerto,
           variables: runtimeVars,
           volumenes,
+          limites: params.limites,
         }),
       );
       composeFile = composePath;
@@ -611,8 +944,10 @@ export async function deployProyecto(params: {
       overrideArgs.push("-f", overridePath);
     }
 
+    // Always, even when empty: without it Compose would interpolate with
+    // whatever .env sits in the shared .panel/ directory.
     const envFileArgs =
-      tipo === "compose" && composeContent && runtimeVars.length > 0
+      tipo === "compose" && composeContent
         ? ["--env-file", `${panelDir}/${proyectoNombre}.env`]
         : [];
 
@@ -626,14 +961,27 @@ export async function deployProyecto(params: {
       ...envFileArgs,
       "up",
       "--build",
+      // No --force-recreate: Compose recreates the Servicios whose image or
+      // config changed and leaves the rest (the database) running.
       "-d",
-      "--force-recreate",
     ];
-
-    onLog?.("→ Construyendo e iniciando contenedores...");
 
     let output = "";
     try {
+      // Generated composes only: the Panel does not mount Volúmenes in a
+      // compose Proyecto.
+      if (tipo !== "compose")
+        await sembrarVolumenesNuevos({
+          volumenes,
+          projectSlug,
+          composeFile,
+          imagen: tipo === "image" ? imagenUrl! : null,
+          onLog,
+          signal,
+        });
+      if (tipo === "nodejs")
+        await entregarVolumenesANode(volumenes, onLog, signal);
+      onLog?.("→ Construyendo e iniciando contenedores...");
       output = await spawnDockerCompose(composeArgs, onLog, signal);
     } finally {
       if (escribioEnvLocal) {
@@ -646,6 +994,8 @@ export async function deployProyecto(params: {
         });
       }
     }
+
+    await esperarContenedoresSanos(projectSlug, onLog, signal);
 
     onLog?.("→ Conectando red y proxy...");
     await asegurarRedCliente(clienteSlug);
@@ -668,4 +1018,40 @@ export async function deployProyecto(params: {
       await unlink(keyFilePath).catch(() => {});
     }
   }
+}
+
+// What a Proyecto leaves on the VPS once it is gone from the Panel. Always:
+// the files with its decrypted variables and the ones the Panel generated.
+// Its clone and the data in it (Volúmenes, ./data folders) only when asked.
+export async function borrarFicherosProyecto(
+  clienteSlug: string,
+  proyectoNombre: string,
+  borrarDatos: boolean,
+): Promise<void> {
+  const clienteDir = `${env.REPOS_DIR}/${clienteSlug}`;
+  const repoDir = `${clienteDir}/${proyectoNombre}`;
+  const generado = `${clienteDir}/.panel/${proyectoNombre}`;
+  await Promise.all(
+    [
+      `${repoDir}/.env`,
+      `${repoDir}/.env.local`,
+      `${generado}.env`,
+      `${generado}.docker-compose.yml`,
+      `${generado}.logging.yml`,
+      `${generado}.Dockerfile`,
+      `${generado}.Dockerfile.dockerignore`,
+      `${generado}.deploy_key`,
+    ].map((ruta) => unlink(ruta).catch(() => {})),
+  );
+  if (!borrarDatos) return;
+  // As root in a helper container: the data belongs to the containers' users.
+  const borrar = enVolumen(
+    clienteDir,
+    "rm",
+    "-rf",
+    `/destino/${proyectoNombre}`,
+  );
+  await ejecutar(borrar.comando, borrar.args, {}).catch((err: unknown) =>
+    log.warn({ err, repoDir }, "No se pudo borrar la carpeta del Proyecto"),
+  );
 }

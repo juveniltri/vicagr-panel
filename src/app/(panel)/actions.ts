@@ -93,10 +93,12 @@ export async function crearProyectoAction(
   dockerfilePath?: string,
   buildCommand?: string,
   startCommand?: string,
+  plantilla?: "wordpress",
 ) {
   try {
     const api = await createServerCaller();
     await api.proyectos.crear({
+      plantilla,
       clienteId,
       nombre,
       dominio,
@@ -125,10 +127,12 @@ export async function editarProyectoAction(
   dockerfilePath?: string,
   buildCommand?: string,
   startCommand?: string,
+  limites?: { limiteMemoriaMb: number; limiteCpus: number },
 ) {
   try {
     const api = await createServerCaller();
     await api.proyectos.editar({
+      ...limites,
       id,
       nombre,
       repositorioUrl,
@@ -175,10 +179,11 @@ export async function toggleAutoDeployAction(id: string) {
 export async function eliminarProyectoAction(
   id: string,
   borrarCopias: boolean = false,
+  borrarDatos: boolean = false,
 ) {
   try {
     const api = await createServerCaller();
-    await api.proyectos.eliminar({ id, borrarCopias });
+    await api.proyectos.eliminar({ id, borrarCopias, borrarDatos });
   } catch (err) {
     return { error: parseTRPCError(err, "Error al eliminar proyecto") };
   }

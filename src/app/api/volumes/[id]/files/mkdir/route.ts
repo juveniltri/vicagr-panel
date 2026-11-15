@@ -1,9 +1,13 @@
-import { mkdir } from "node:fs/promises";
 import { type NextRequest } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
-import { resolverRutaSegura, rutaHostVolumen } from "@/lib/volumenes";
+import {
+  crearCarpetaEnVolumen,
+  resolverRutaSinEnlaces,
+  rutaHostVolumen,
+  YaExiste,
+} from "@/lib/volumenes";
 import { prisma } from "@/lib/prisma";
 
 const bodySchema = z.object({
@@ -44,14 +48,17 @@ export async function POST(
   );
 
   const relative = body.path ? `${body.path}/${body.nombre}` : body.nombre;
-  const target = resolverRutaSegura(base, relative, { permitirRaiz: false });
+  const target = await resolverRutaSinEnlaces(base, relative, {
+    permitirRaiz: false,
+    reposDir: env.REPOS_DIR,
+  });
   if (!target) return new Response("Invalid path", { status: 400 });
 
   try {
-    await mkdir(target, { recursive: false });
+    await crearCarpetaEnVolumen(base, target);
     return new Response(null, { status: 201 });
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+    if (err instanceof YaExiste) {
       return new Response("Already exists", { status: 409 });
     }
     throw err;

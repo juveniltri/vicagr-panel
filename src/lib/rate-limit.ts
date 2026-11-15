@@ -21,5 +21,11 @@ export function crearLimitador({
     return entrada.count > max;
   }
 
-  return Object.assign(limitado, { claves: () => intentos.size });
+  // Whether the next call would be refused, without counting this one.
+  function bloqueado(clave: string): boolean {
+    const entrada = intentos.get(clave);
+    return !!entrada && Date.now() < entrada.reset && entrada.count >= max;
+  }
+
+  return Object.assign(limitado, { bloqueado, claves: () => intentos.size });
 }
