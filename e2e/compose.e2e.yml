@@ -1,0 +1,9 @@
+# Over scripts/guia/compose.guia.yml for `npm run test:e2e`. The Proyectos'
+# Volúmenes are bind mounts that the Docker daemon resolves on the host, so the
+# repos folder has to be the same path on the host and in the Panel, as on a
+# VPS. With the guide's named volume the file manager and the containers would
+# see different folders.
+services:
+  panel:
+    volumes:
+      - /var/vicagr/repos:/var/vicagr/repos
