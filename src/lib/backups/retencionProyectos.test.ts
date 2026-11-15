@@ -12,7 +12,9 @@ const m = vi.hoisted(() => ({
   soltar: vi.fn(),
   error: vi.fn(),
   warn: vi.fn(),
+  notificar: vi.fn(),
 }));
+vi.mock("@/lib/notificaciones", () => ({ notificarFalloBackup: m.notificar }));
 vi.mock("@/lib/logger", () => ({
   logger: { child: () => ({ warn: m.warn, error: m.error }) },
 }));
@@ -33,7 +35,8 @@ vi.mock("./configuracion", () => ({
     fn: (r: { env: object; args: string[] }) => Promise<void>,
   ) => fn({ env: {}, args: [] }),
 }));
-vi.mock("./operacion", () => ({
+vi.mock("./operacion", async (original) => ({
+  ...(await original<typeof import("./operacion")>()),
   tomarOperacion: m.tomar,
   soltarOperacion: m.soltar,
 }));
@@ -294,7 +297,9 @@ describe("iniciarPurgaProyecto", () => {
     m.tomar.mockImplementation(() => {
       throw new Error("ocupado");
     });
-    await expect(iniciarPurgaProyecto("p1")).rejects.toThrow("ocupado");
+    await expect(iniciarPurgaProyecto("p1", "uno/web")).rejects.toThrow(
+      "ocupado",
+    );
     expect(m.listar).not.toHaveBeenCalled();
   });
 
@@ -303,7 +308,7 @@ describe("iniciarPurgaProyecto", () => {
     m.tomar.mockReturnValue(controlador);
     m.listar.mockResolvedValue([snap({ id: "a" }), snap({ id: "b" })]);
     m.config.mockResolvedValue({});
-    await iniciarPurgaProyecto("p1");
+    await iniciarPurgaProyecto("p1", "uno/web");
     await vi.waitFor(() => expect(m.soltar).toHaveBeenCalled());
     expect(m.olvidar).toHaveBeenCalledWith(expect.anything(), {
       etiquetas: [],
@@ -313,12 +318,18 @@ describe("iniciarPurgaProyecto", () => {
     expect(m.podar).toHaveBeenCalled();
   });
 
-  it("registra el fallo y suelta el bloqueo", async () => {
+  it("registra el fallo, avisa y suelta el bloqueo", async () => {
     m.tomar.mockReturnValue(new AbortController());
     m.config.mockRejectedValue(new Error("sin destino"));
-    await iniciarPurgaProyecto("p1");
+    await iniciarPurgaProyecto("p1", "uno/web");
     await vi.waitFor(() => expect(m.soltar).toHaveBeenCalled());
     expect(m.error).toHaveBeenCalled();
     expect(m.podar).not.toHaveBeenCalled();
+    expect(m.notificar).toHaveBeenCalledWith({
+      operacion: "borrado",
+      origen: "manual",
+      error: "sin destino\nSe borrarán solas a los 30 días.",
+      proyecto: "uno/web",
+    });
   });
 });

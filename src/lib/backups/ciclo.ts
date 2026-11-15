@@ -268,9 +268,16 @@ export async function iniciarCopiaProyecto(
       .then((resultado) =>
         cerrarFila(fila.id, prep.proyecto, "manual", resultado),
       )
-      .catch((err: unknown) =>
-        log.error({ err, proyectoId }, "No se pudo registrar la copia"),
-      )
+      .catch(async (err: unknown) => {
+        log.error({ err, proyectoId }, "No se pudo registrar la copia");
+        // The history cannot say how it went, so the warning has to.
+        await notificarFalloBackup({
+          operacion: "copia",
+          origen: "manual",
+          error: `No se pudo registrar el resultado de la copia: ${motivoDeFallo(err, signal)}`,
+          proyecto: nombreDe(prep.proyecto),
+        });
+      })
       .finally(() => soltarOperacion());
     return { id: fila.id };
   } catch (err) {

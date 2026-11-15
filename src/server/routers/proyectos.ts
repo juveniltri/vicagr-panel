@@ -613,7 +613,7 @@ export const proyectosRouter = router({
       // Last, so an unexpected error here cannot skip the cleanup above.
       if (input.borrarCopias) {
         try {
-          await iniciarPurgaProyecto(input.id);
+          await iniciarPurgaProyecto(input.id, `${slug}/${proyecto.nombre}`);
         } catch (err) {
           if (!(err instanceof OperacionEnCurso)) throw err;
           // Lost a race: the 30-day rule purges these copies later.

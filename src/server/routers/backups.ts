@@ -14,6 +14,7 @@ import { generarClave, kitRecuperacion } from "@/lib/backups/kit";
 import {
   OperacionEnCurso,
   cancelarOperacion,
+  motivoCancelacion,
   hayOperacionEnCurso,
 } from "@/lib/backups/operacion";
 import { proximaCopia } from "@/lib/backups/programacion";
@@ -571,7 +572,7 @@ export const backupsRouter = router({
   cancelar: protectedProcedure.mutation(({ ctx }) => {
     const quien =
       ctx.session.user?.name ?? ctx.session.user?.email ?? "un usuario";
-    if (!cancelarOperacion(`Cancelado por ${quien}`))
+    if (!cancelarOperacion(motivoCancelacion(quien)))
       throw new TRPCError({
         code: "NOT_FOUND",
         message: "No hay ninguna operación en curso",

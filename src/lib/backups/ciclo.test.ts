@@ -541,11 +541,18 @@ describe("iniciarCopiaProyecto", () => {
     });
   });
 
-  it("si no se puede cerrar la fila, lo deja en el log y suelta el bloqueo", async () => {
+  it("si no se puede cerrar la fila, lo deja en el log, avisa y suelta el bloqueo", async () => {
     m.update.mockRejectedValue(new Error("BD caída"));
     await iniciarCopiaProyecto("pA");
     await terminado();
     expect(m.error).toHaveBeenCalled();
+    // The history cannot say how it went, so the warning has to.
+    expect(m.notificar).toHaveBeenCalledWith({
+      operacion: "copia",
+      origen: "manual",
+      error: "No se pudo registrar el resultado de la copia: BD caída",
+      proyecto: expect.any(String),
+    });
   });
 
   it("sin contenedores: No hay nada que copiar, sin fila", async () => {

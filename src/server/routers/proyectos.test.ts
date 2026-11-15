@@ -1050,7 +1050,10 @@ describe("proyectos.eliminar", () => {
         borrarCopias: true,
       });
       expect(prisma.proyecto.delete).toHaveBeenCalled();
-      expect(iniciarPurgaProyecto).toHaveBeenCalledWith("p1");
+      expect(iniciarPurgaProyecto).toHaveBeenCalledWith(
+        "p1",
+        "cliente-uno/web-app",
+      );
     });
 
     it("sigue adelante si otra operación gana la carrera", async () => {

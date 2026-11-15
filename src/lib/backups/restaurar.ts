@@ -178,10 +178,16 @@ export async function iniciarRestauracion(
 
         await restaurarBd(dump, signal);
 
+        // The database is back: from here a failure does not undo it, but it
+        // must not pass for a clean restore either.
+        const avisos: string[] = [];
+        const anotar = (texto: string) => (err: unknown) => {
+          log.warn({ err }, texto);
+          avisos.push(`${texto}: ${motivoDeFallo(err, signal)}`);
+        };
         const dinamica = path.join(path.dirname(dump), "traefik", "dynamic");
         await reemplazarConfigTraefik(dinamica, env.TRAEFIK_DYNAMIC_DIR).catch(
-          (err: unknown) =>
-            log.warn({ err }, "Restauración sin config de Traefik"),
+          anotar("Restaurada sin la config de Traefik"),
         );
         // Prepared statements cached by the pool point at the dropped tables.
         await prisma.$disconnect();
@@ -189,13 +195,21 @@ export async function iniciarRestauracion(
         // the restored one through the safe path (no restart if unchanged).
         await leerConfiguracionProxy()
           .then(({ aplicada }) => lanzarAplicacionProxy(aplicada))
-          .catch((err: unknown) =>
-            log.warn({ err }, "No se volvió a aplicar la config del Proxy"),
-          );
+          .catch(anotar("No se volvió a aplicar la config del Proxy"));
         await prisma.backup.update({
           where: { id: restauracionId },
-          data: { resultado: "exito", finalizadoEn: new Date() },
+          data: {
+            resultado: "exito",
+            finalizadoEn: new Date(),
+            ...(avisos.length > 0 ? { error: avisos.join("\n") } : {}),
+          },
         });
+        if (avisos.length > 0)
+          await notificarFalloBackup({
+            operacion: "restauracion",
+            origen: "manual",
+            error: avisos.join("\n"),
+          });
       } catch (err) {
         await fallo(motivoDeFallo(err, signal));
       } finally {

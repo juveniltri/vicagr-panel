@@ -35,10 +35,14 @@ const m = vi.hoisted(() => ({
   leerProxy: vi.fn(),
   lanzarProxy: vi.fn(),
 }));
+// A real folder: the restore refills it.
+const dinamica = vi.hoisted(() => ({ dir: "" }));
 vi.mock("@/env", () => ({
   env: {
     DATABASE_URL: "postgresql://u:p@db/bd",
-    TRAEFIK_DYNAMIC_DIR: "/etc/traefik/dynamic",
+    get TRAEFIK_DYNAMIC_DIR() {
+      return dinamica.dir;
+    },
   },
 }));
 vi.mock("@/lib/logger", () => ({
@@ -117,7 +121,9 @@ describe("buscarFichero", () => {
 });
 
 describe("iniciarRestauracion", () => {
-  beforeEach(() => {
+  afterAll(() => rm(dinamica.dir, { recursive: true, force: true }));
+  beforeEach(async () => {
+    dinamica.dir ||= await mkdtemp(path.join(tmpdir(), "dinamica-"));
     vi.clearAllMocks();
     soltarOperacion();
     m.cargar.mockResolvedValue({ clave: "c", destino: { tipo: "sftp" } });
@@ -211,7 +217,9 @@ describe("iniciarRestauracion", () => {
     expect(hayOperacionEnCurso()).toBe(false);
   });
 
-  it("si no se puede volver a aplicar el Proxy restaurado, la restauración no falla", async () => {
+  // The database is already restored: it stays a success, but says what is
+  // missing and warns, instead of passing for a clean restore.
+  it("sin config de Traefik o sin poder aplicar el Proxy: éxito con avisos y aviso", async () => {
     m.restaurarSnapshot.mockImplementation(
       async (_r: unknown, _id: string, destino: string) => {
         await mkdir(path.join(destino, "x"), { recursive: true });
@@ -223,9 +231,21 @@ describe("iniciarRestauracion", () => {
     await iniciarRestauracion("abc123");
     await terminar();
 
+    const avisos = expect.stringMatching(
+      /^Restaurada sin la config de Traefik: .+\nNo se volvió a aplicar la config del Proxy: ya hay una en curso$/,
+    );
     expect(m.backupUpdate).toHaveBeenLastCalledWith({
       where: { id: "rest" },
-      data: { resultado: "exito", finalizadoEn: expect.any(Date) },
+      data: {
+        resultado: "exito",
+        finalizadoEn: expect.any(Date),
+        error: avisos,
+      },
+    });
+    expect(m.notificar).toHaveBeenCalledWith({
+      operacion: "restauracion",
+      origen: "manual",
+      error: avisos,
     });
   });
 

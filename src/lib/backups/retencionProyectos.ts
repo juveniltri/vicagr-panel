@@ -1,9 +1,10 @@
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import { notificarFalloBackup } from "@/lib/notificaciones";
 import { hashClave } from "./comandos";
 import { cargarConfigResuelta, conRestic } from "./configuracion";
 import { detectarProyecto } from "./deteccion";
-import { soltarOperacion, tomarOperacion } from "./operacion";
+import { motivoDeFallo, soltarOperacion, tomarOperacion } from "./operacion";
 import {
   listarSnapshotsProyectos,
   olvidar,
@@ -147,7 +148,11 @@ export async function aplicarRetencionProyectos(r: Restic): Promise<void> {
 }
 
 // The lock is taken synchronously so a busy destination fails the caller at once.
-export async function iniciarPurgaProyecto(proyectoId: string): Promise<void> {
+export async function iniciarPurgaProyecto(
+  proyectoId: string,
+  // "<cliente>/<proyecto>": the row is already gone when this fails.
+  nombre: string,
+): Promise<void> {
   const controlador = tomarOperacion();
   void (async () => {
     try {
@@ -163,6 +168,13 @@ export async function iniciarPurgaProyecto(proyectoId: string): Promise<void> {
       });
     } catch (err) {
       log.error({ err, proyectoId }, "No se pudieron borrar las copias");
+      // Whoever ticked the box believes they are gone.
+      await notificarFalloBackup({
+        operacion: "borrado",
+        origen: "manual",
+        error: `${motivoDeFallo(err, controlador.signal)}\nSe borrarán solas a los 30 días.`,
+        proyecto: nombre,
+      });
     } finally {
       soltarOperacion();
     }
