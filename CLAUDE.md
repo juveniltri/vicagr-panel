@@ -80,7 +80,7 @@ Esta regla es un gate hard en CI. Ver `docs/testing-strategy.md` para el mapa co
 ### Herramientas
 
 - Unit / Integration: **Vitest**
-- E2E: **Playwright**
+- E2E: **Playwright** — `npm run test:e2e` (`e2e/`, `playwright.config.ts`) levanta el stack de producción de `npm run guia` con la carpeta de repos compartida con el host (`e2e/compose.e2e.yml`), un usuario y un buzón para los avisos, y prueba de punta a punta deploy, variables, Volúmenes, gestor de ficheros, avisos de caída y recuperación, borrado, plantilla WordPress y accesibilidad (axe). Necesita Docker y los puertos 80, 443 y 5434; tarda unos 5-10 min. `E2E_CONSERVAR=1` deja el stack en https://localhost y `npm run test:e2e:limpiar` lo quita. Pasarla antes de cada release
 - Accesibilidad: **axe-core** integrado en Playwright
 - Observabilidad de errores: **Sentry**
 
