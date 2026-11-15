@@ -68,17 +68,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (limitarLogin(ipCliente(request))) throw new DemasiadosIntentos();
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) return null;
-        if (limitarCuenta(parsed.data.email.toLowerCase()))
-          throw new DemasiadosIntentos();
+        const cuenta = parsed.data.email.toLowerCase();
+        if (limitarCuenta.bloqueado(cuenta)) throw new DemasiadosIntentos();
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email },
         });
-        if (!user) return null;
-        const valid = await bcrypt.compare(
-          parsed.data.password,
-          user.passwordHash,
-        );
-        if (!valid) return null;
+        // Only failures count: a user who logs in often must not lock
+        // themselves out.
+        const valid =
+          !!user &&
+          (await bcrypt.compare(parsed.data.password, user.passwordHash));
+        if (!user || !valid) {
+          limitarCuenta(cuenta);
+          return null;
+        }
         return { id: user.id, email: user.email, name: user.nombre };
       },
     }),
