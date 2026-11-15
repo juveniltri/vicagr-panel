@@ -69,6 +69,9 @@ services:
 
   # ── Panel vicagr-panel ────────────────────────────────────────────────────────
   panel:
+    # The release workflow publishes one per tag; without PANEL_VERSION in .env
+    # it is built here (`up -d --build`), as the e2e suite and the guide do.
+    image: ghcr.io/juveniltri/vicagr-panel:${PANEL_VERSION:-local}
     build: .
     container_name: vicagr-panel
     restart: unless-stopped

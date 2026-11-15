@@ -232,9 +232,14 @@ problemas frecuentes (§ E). Resumen:
 
 ```bash
 git clone <repo> /opt/vicagr-panel && cd /opt/vicagr-panel
-cp .env.production.example .env   # rellenar
-docker compose up -d --build      # también al actualizar: el stack completo, tras git pull
+cp .env.production.example .env   # rellenar, con PANEL_VERSION=X.Y.Z
+docker login ghcr.io              # una vez, token read:packages
+git checkout vX.Y.Z && docker compose pull panel && docker compose up -d   # también al actualizar
 ```
+
+`release.yml` publica la imagen `ghcr.io/juveniltri/vicagr-panel:X.Y.Z` (y `latest`) al subir el
+tag, antes de crear la Release. Sin `PANEL_VERSION` el compose usa el tag `local` y
+`up -d --build` la construye en la VPS (así lo hacen la e2e y `npm run guia`).
 
 Al publicar una versión con pasos manuales, añadirlos en `production.md` § B además del
 `### Al actualizar` del CHANGELOG.
