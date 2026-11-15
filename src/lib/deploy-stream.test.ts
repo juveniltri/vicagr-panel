@@ -78,6 +78,17 @@ describe("suscribirDeployLogs", () => {
     expect(onLine).toHaveBeenCalledWith("en curso");
   });
 
+  it("suscribirse a un deploy terminado da el resultado y un desuscribir que no hace nada", () => {
+    const emisor = getOrCreateDeployEmitter("p1");
+    emisor.emit("done", "exito");
+    const onDone = vi.fn();
+
+    const desuscribir = suscribirDeployLogs("p1", vi.fn(), onDone);
+
+    expect(onDone).toHaveBeenCalledWith("exito");
+    expect(() => desuscribir?.()).not.toThrow();
+  });
+
   it("mientras el deploy está en curso, todos comparten el mismo emitter", () => {
     expect(getOrCreateDeployEmitter("p1")).toBe(getOrCreateDeployEmitter("p1"));
   });
