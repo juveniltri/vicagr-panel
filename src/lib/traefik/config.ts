@@ -17,8 +17,9 @@ import {
 const log = logger.child({ module: "traefik" });
 
 const CABECERA_GENERADO = "# generado por vicagr-panel";
-// HACK: ficheros escritos antes del cambio de nombre; quitar en la release siguiente
-// a la que despliegue el rename (regenerarConfigTraefik ya los reescribe al arrancar).
+// HACK: ficheros escritos antes del cambio de nombre (3.0.0); regenerarConfigTraefik los
+// reescribe al arrancar. Quitar cuando todas las VPS, producción incluida, hayan
+// arrancado una versión >= 3.0.0.
 const CABECERAS_GENERADO = [CABECERA_GENERADO, "# generado por vicalba-panel"];
 
 export type RutaTraefik = {

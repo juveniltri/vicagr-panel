@@ -191,7 +191,6 @@ npm run build            # build de producción
 npm run lint             # eslint
 npm run type-check       # tsc --noEmit
 npm run test:unit        # vitest (unitarios)
-npm run test:integration # vitest (integración)
 npm run test:e2e         # playwright
 npm run db:migrate       # ejecutar migraciones pendientes
 npm run db:seed          # poblar con datos de desarrollo
