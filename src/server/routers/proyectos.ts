@@ -339,7 +339,11 @@ export const proyectosRouter = router({
     const proyecto = await findProyectoOrThrow(input.id);
     const dominio = dominioPrincipal(proyecto);
     const cert = dominio ? (await leerCertificados())[dominio] : undefined;
+    const conSecretoPropio = await prisma.proyecto.count({
+      where: { id: proyecto.id, secretoWebhookCifrado: { not: null } },
+    });
     return {
+      secretoWebhookPropio: conSecretoPropio > 0,
       ssl: dominio
         ? { activo: !!cert, caducaEn: cert?.caducaEn ?? null }
         : null,
@@ -685,6 +689,41 @@ export const proyectosRouter = router({
         where: { id: input.id },
         data: { autoDeployHabilitado: !proyecto.autoDeployHabilitado },
       });
+    }),
+
+  // Shown once: only the encrypted copy is kept.
+  generarSecretoWebhook: protectedProcedure
+    .input(idInput)
+    .mutation(async ({ input }) => {
+      await findProyectoOrThrow(input.id);
+      const secreto = randomBytes(32).toString("hex");
+      const { valorCifrado, iv, authTag } = cifrar(secreto);
+      await prisma.proyecto.update({
+        where: { id: input.id },
+        data: {
+          secretoWebhookCifrado: valorCifrado,
+          secretoWebhookIv: iv,
+          secretoWebhookAuthTag: authTag,
+        },
+        select: { id: true },
+      });
+      return { secreto };
+    }),
+
+  quitarSecretoWebhook: protectedProcedure
+    .input(idInput)
+    .mutation(async ({ input }) => {
+      await findProyectoOrThrow(input.id);
+      await prisma.proyecto.update({
+        where: { id: input.id },
+        data: {
+          secretoWebhookCifrado: null,
+          secretoWebhookIv: null,
+          secretoWebhookAuthTag: null,
+        },
+        select: { id: true },
+      });
+      return { ok: true };
     }),
 
   listarDeploys: protectedProcedure

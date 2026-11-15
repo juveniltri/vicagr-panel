@@ -1511,6 +1511,89 @@ describe("proyectos.toggleAutoDeploy", () => {
   });
 });
 
+describe("secreto de webhook propio", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(mockSession as never);
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(
+      mockProyecto as never,
+    );
+  });
+
+  it("generar guarda un secreto nuevo cifrado y lo devuelve una vez", async () => {
+    const ctx = await createContext();
+    const { secreto } = await createCaller(ctx).proyectos.generarSecretoWebhook(
+      { id: "p1" },
+    );
+
+    expect(secreto).toMatch(/^[0-9a-f]{64}$/);
+    expect(cifrar).toHaveBeenCalledWith(secreto);
+    expect(prisma.proyecto.update).toHaveBeenCalledWith({
+      where: { id: "p1" },
+      data: {
+        secretoWebhookCifrado: "cifrado-base64",
+        secretoWebhookIv: "iv-hex",
+        secretoWebhookAuthTag: "tag-hex",
+      },
+      select: { id: true },
+    });
+  });
+
+  it("generar dos veces da secretos distintos", async () => {
+    const ctx = await createContext();
+    const caller = createCaller(ctx).proyectos;
+    const a = await caller.generarSecretoWebhook({ id: "p1" });
+    const b = await caller.generarSecretoWebhook({ id: "p1" });
+
+    expect(a.secreto).not.toBe(b.secreto);
+  });
+
+  it("quitar vuelve al secreto global", async () => {
+    const ctx = await createContext();
+    await createCaller(ctx).proyectos.quitarSecretoWebhook({ id: "p1" });
+
+    expect(prisma.proyecto.update).toHaveBeenCalledWith({
+      where: { id: "p1" },
+      data: {
+        secretoWebhookCifrado: null,
+        secretoWebhookIv: null,
+        secretoWebhookAuthTag: null,
+      },
+      select: { id: true },
+    });
+  });
+
+  it.each(["generarSecretoWebhook", "quitarSecretoWebhook"] as const)(
+    "%s lanza NOT_FOUND si el Proyecto no existe",
+    async (procedure) => {
+      vi.mocked(prisma.proyecto.findUnique).mockResolvedValue(null);
+
+      const ctx = await createContext();
+      await expect(
+        createCaller(ctx).proyectos[procedure]({ id: "nope" }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+      expect(prisma.proyecto.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it("obtener dice si tiene secreto propio, sin devolverlo", async () => {
+    vi.mocked(prisma.proyecto.findUnique).mockResolvedValue({
+      ...mockProyecto,
+      cliente: { id: "c1", slug: "cliente-uno", nombre: "Cliente Uno" },
+    } as never);
+    vi.mocked(prisma.proyecto.count).mockResolvedValueOnce(1);
+
+    const ctx = await createContext();
+    const p = await createCaller(ctx).proyectos.obtener({ id: "p1" });
+
+    expect(p.secretoWebhookPropio).toBe(true);
+    expect(prisma.proyecto.count).toHaveBeenCalledWith({
+      where: { id: "p1", secretoWebhookCifrado: { not: null } },
+    });
+    expect(JSON.stringify(p)).not.toContain("cifrado");
+  });
+});
+
 describe("proyectos.obtener", () => {
   const mockProyectoConCliente = {
     id: "p1",

@@ -169,12 +169,13 @@ export default async function ConfiguracionPage({
                   <Campo etiqueta="Content type" valor="application/json" />
                   <Campo
                     etiqueta="Secret"
-                    valor="GITHUB_WEBHOOK_SECRET (del .env)"
+                    valor="GITHUB_WEBHOOK_SECRET (del .env) o el propio del proyecto"
                   />
                 </div>
                 <p className="font-body text-xs text-text-muted">
                   Eventos: «Just the push event». Activa el auto-deploy en cada
-                  proyecto desde su ficha.
+                  proyecto desde su ficha; allí también puedes generarle un
+                  secreto propio, y entonces el global deja de valer para él.
                 </p>
               </Tarjeta>
             </>

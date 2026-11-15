@@ -295,7 +295,10 @@ reconstruye desde el commit, así que no las necesita.
 ### Nota — webhook de GitHub
 
 Endpoint `POST /api/webhooks/github`, content type `application/json` (también acepta form-urlencoded),
-secret = `GITHUB_WEBHOOK_SECRET`, evento push. La URL del repo se compara normalizada (con/sin `.git`,
+secret = `GITHUB_WEBHOOK_SECRET` o el propio del Proyecto (`secretoWebhookCifrado`, generado en su
+ficha y mostrado una vez), evento push. Un Proyecto con secreto propio solo se despliega con él;
+si el global no firma, la ruta prueba los secretos de los Proyectos del repo. Los tres campos van
+en el `omit` global de `src/lib/prisma.ts` (para leerlos: `select` u `omit: { …: false }`). La URL del repo se compara normalizada (con/sin `.git`,
 https/ssh), responde `202` y despliega en segundo plano el sha exacto del push. Al crear el webhook
 GitHub envía un `ping`: si en _Recent Deliveries_ no aparece nada, GitHub no ha llamado al panel.
 

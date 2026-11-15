@@ -32,6 +32,7 @@ import { VisorLogs } from "@/components/dashboard/LogsModal";
 import { DeployLogsPanel } from "@/components/dashboard/DeployLogsPanel";
 import { ComposeEditor } from "@/components/dashboard/ComposeEditor";
 import { ProjectActionButton } from "@/components/dashboard/ProjectActionButton";
+import { SecretoWebhook } from "@/components/dashboard/SecretoWebhook";
 import { RESULTADO_DEPLOY } from "@/components/dashboard/DeploysRecientes";
 import {
   BotonFijar,
@@ -450,6 +451,12 @@ export default async function DetalleProyectoPage({
                   />
                 </button>
               </form>
+              {proyecto.repositorioUrl && (
+                <SecretoWebhook
+                  proyectoId={id}
+                  propio={proyecto.secretoWebhookPropio}
+                />
+              )}
             </Card>
 
             <Card
