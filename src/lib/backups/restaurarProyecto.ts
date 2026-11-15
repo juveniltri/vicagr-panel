@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { eliminarAuxiliar, nombreAuxiliar } from "./auxiliar";
 import {
   filtrarRolesSql,
+  copiaEntera,
   hashClave,
   procesoEsperarBd,
   procesoExtraerDatos,
@@ -80,21 +81,6 @@ const nombreDe = (p: ProyectoRestauracion) => `${p.clienteSlug}/${p.nombre}`;
 const aviso = (p: ProyectoRestauracion) =>
   `Los Servicios de ${nombreDe(p)} se han quedado parados. Restaura otra vez (la copia previa está en la lista) o arráncalos a mano.`;
 
-// A failed element may have left some bases without others (or without
-// roles): restoring that would silently drop data.
-function copiaEntera(
-  e: Elemento,
-  partes: SnapshotProyecto[],
-  registrados: { clave: string; resultado: string }[],
-): boolean {
-  const filas = registrados.filter((r) => r.clave === e.clave);
-  if (filas.length > 0) return filas.every((r) => r.resultado === "exito");
-  // No row (Panel recovered on a new VPS): the snapshots must show it finished.
-  if (e.tipo === "datos") return true;
-  const fin = e.motor === "mysql" ? "/todo.sql" : "/_roles.sql";
-  return partes.some((s) => s.ruta.endsWith(fin));
-}
-
 async function validar(p: {
   proyectoId: string;
   copiaId: string;
@@ -147,7 +133,7 @@ async function validar(p: {
     if (!elemento) {
       throw new RestauracionRechazada(`${clave} ya no se monta en el Proyecto`);
     }
-    if (!copiaEntera(elemento, partes, registrados)) {
+    if (!copiaEntera(clave, partes, registrados)) {
       throw new RestauracionRechazada(
         `${clave} no se copió entero en esa copia`,
       );

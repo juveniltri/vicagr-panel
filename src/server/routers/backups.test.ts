@@ -68,6 +68,7 @@ const m = vi.hoisted(() => ({
   proyectoFind: vi.fn(),
   proyectoUpdate: vi.fn(),
   elementoFindMany: vi.fn(),
+  elementoCopiaFindMany: vi.fn(),
   elementoUpsert: vi.fn(),
   detectar: vi.fn(),
   copiarProyecto: vi.fn(),
@@ -87,6 +88,7 @@ vi.mock("@/lib/prisma", () => ({
     backup: { findMany: m.backupFindMany, findFirst: m.backupFindFirst },
     proyecto: { findUnique: m.proyectoFind, update: m.proyectoUpdate },
     elementoBackup: { findMany: m.elementoFindMany, upsert: m.elementoUpsert },
+    elementoCopia: { findMany: m.elementoCopiaFindMany },
   },
 }));
 vi.mock("@/lib/crypto", () => ({
@@ -945,11 +947,13 @@ describe("backups por Proyecto", () => {
       expect(res).toEqual({
         habilitado: true,
         valida: true,
+        // Neither the container id nor the host path leave the server.
         elementos: [
-          { ...bd, incluido: true },
-          { ...datos, incluido: false },
+          { clave: bd.clave, tipo: "bd", incluido: true },
+          { clave: datos.clave, tipo: "datos", incluido: false },
         ],
         noCopiados: [{ origen: "/x", motivo: "Fuera del Proyecto" }],
+        errorDeteccion: null,
         ultima: { iniciadoEn, resultado: "exito" },
         restaurando: true,
         enCurso: true,
@@ -1091,9 +1095,19 @@ describe("backups por Proyecto", () => {
         ),
         snap("s5", "vieja", "/bd/app/app.sql", "2026-10-01T10:01:00Z", null),
         snap("s6", "sinbytes", "/bd/app/app.sql", "2026-09-01T10:00:00Z", null),
+        // Written by some other version: skipped, not a broken listing.
+        snap("s7", "nueva", "/otra/cosa.bin", "2026-10-02T10:02:00Z", null),
+      ]);
+      m.elementoCopiaFindMany.mockResolvedValue([
+        { backupId: "nueva", clave: "bd:app", resultado: "exito" },
+        { backupId: "vieja", clave: "bd:app", resultado: "error" },
       ]);
       const res = await caller().backups.copiasProyecto({ proyectoId: "p1" });
       expect(m.listarProyectos).toHaveBeenCalledWith(expect.anything(), "p1");
+      expect(m.elementoCopiaFindMany).toHaveBeenCalledWith({
+        where: { backupId: { in: ["vieja", "nueva", "sinbytes"] } },
+        select: { backupId: true, clave: true, resultado: true },
+      });
       expect(res.map((c) => c.id)).toEqual(["nueva", "vieja", "sinbytes"]);
       expect(res[0]).toEqual({
         id: "nueva",
@@ -1101,14 +1115,38 @@ describe("backups por Proyecto", () => {
         origen: "manual",
         bytes: 150,
         elementos: [
-          { clave: "bd:app", restaurable: true },
-          { clave: "datos:./data", restaurable: true },
-          { clave: "datos:.panel/x", restaurable: false },
+          { clave: "bd:app", restaurable: true, noRestaurable: null },
+          { clave: "datos:./data", restaurable: true, noRestaurable: null },
+          {
+            clave: "datos:.panel/x",
+            restaurable: false,
+            noRestaurable: "a_mano",
+          },
         ],
       });
       expect(res[1].bytes).toBe(10);
-      expect(res[1].elementos).toHaveLength(1);
+      // Failed in that copy: the restore would refuse it.
+      expect(res[1].elementos).toEqual([
+        { clave: "bd:app", restaurable: false, noRestaurable: "incompleta" },
+      ]);
+      // No row and no _roles.sql: it may have stopped halfway.
+      expect(res[2].elementos[0].noRestaurable).toBe("incompleta");
       expect(res[2].bytes).toBeNull();
+    });
+
+    it("sin filas en el historial, una BD con _roles.sql está entera", async () => {
+      m.cargar.mockResolvedValue({});
+      m.listarProyectos.mockResolvedValue([
+        snap("s1", "c", "/bd/app/app.sql", "2026-10-01T10:00:00Z", 1),
+        snap("s2", "c", "/bd/app/_roles.sql", "2026-10-01T10:00:01Z", 1),
+      ]);
+      m.elementoCopiaFindMany.mockResolvedValue([]);
+      const [copia] = await caller().backups.copiasProyecto({
+        proyectoId: "p1",
+      });
+      expect(copia.elementos).toEqual([
+        { clave: "bd:app", restaurable: true, noRestaurable: null },
+      ]);
     });
 
     it("destino sin respuesta: TIMEOUT", async () => {

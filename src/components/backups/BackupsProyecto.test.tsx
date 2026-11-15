@@ -27,25 +27,11 @@ const estadoBase: BackupsProyectoVista = {
   habilitado: true,
   valida: true,
   elementos: [
-    {
-      tipo: "bd",
-      clave: "bd:db",
-      servicio: "db",
-      motor: "postgres",
-      contenedorId: "c1",
-      enMarcha: true,
-      incluido: true,
-    },
-    {
-      tipo: "datos",
-      clave: "datos:./data/media",
-      origen: "/r/media",
-      montaje: "bind",
-      restaurable: true,
-      incluido: false,
-    },
+    { tipo: "bd", clave: "bd:db", incluido: true },
+    { tipo: "datos", clave: "datos:./data/media", incluido: false },
   ],
   noCopiados: [{ origen: "/etc", motivo: "Fuera de la carpeta del Cliente" }],
+  errorDeteccion: null,
   ultima: { iniciadoEn: new Date("2026-10-14T01:00:00Z"), resultado: "exito" },
   restaurando: false,
   enCurso: false,
@@ -57,8 +43,13 @@ const copia: CopiaProyecto = {
   origen: "manual",
   bytes: 2048,
   elementos: [
-    { clave: "bd:db", restaurable: true },
-    { clave: "datos:.panel/x", restaurable: false },
+    { clave: "bd:db", restaurable: true, noRestaurable: null },
+    { clave: "datos:.panel/x", restaurable: false, noRestaurable: "a_mano" },
+    {
+      clave: "datos:./mis fotos",
+      restaurable: false,
+      noRestaurable: "incompleta",
+    },
   ],
 } as CopiaProyecto;
 
@@ -178,6 +169,22 @@ describe("BackupsProyecto", () => {
     expect(screen.getByRole("button", { name: "Copia ahora" })).toBeDisabled();
   });
 
+  // Not «no containers»: that would send the user to deploy for nothing.
+  it("si Docker no responde lo dice, en vez de «sin contenedores»", () => {
+    renderizar({
+      estado: {
+        ...estadoBase,
+        valida: false,
+        elementos: [],
+        errorDeteccion: "No se pudo consultar Docker",
+      },
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "No se pudo consultar Docker",
+    );
+    expect(screen.queryByText(/no tiene contenedores/)).not.toBeInTheDocument();
+  });
+
   it("muestra el error de la detección", () => {
     renderizar({ estado: { error: "Docker no responde" } });
     expect(screen.getByRole("alert")).toHaveTextContent("Docker no responde");
@@ -206,6 +213,11 @@ describe("BackupsProyecto", () => {
     expect(
       within(dialogo).getByRole("link", { name: /a mano/ }),
     ).toHaveAttribute("href", "/guia");
+    // Failed in that copy: offering it would only end in the server's refusal.
+    expect(within(dialogo).getByLabelText("datos:./mis fotos")).toBeDisabled();
+    expect(
+      within(dialogo).getByText("No se copió entero en esta copia"),
+    ).toBeInTheDocument();
 
     const confirmar = within(dialogo).getByRole("button", {
       name: "Restaurar copia",

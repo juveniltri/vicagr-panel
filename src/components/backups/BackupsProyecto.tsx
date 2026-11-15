@@ -203,27 +203,32 @@ function Contenido({
         </div>
       </div>
 
-      {!estado.valida ? (
+      {estado.errorDeteccion ? (
+        <p role="alert" className="font-body text-xs text-state-error">
+          {estado.errorDeteccion}: no se puede saber qué copiar. Vuelve a cargar
+          la página en un momento.
+        </p>
+      ) : !estado.valida ? (
         <p className="font-body text-xs text-text-muted">
           El Proyecto no tiene contenedores: despliégalo para detectar qué se
           puede copiar.
         </p>
       ) : (
         <ul className="flex flex-col">
-          {estado.elementos.map((e) => (
+          {estado.elementos.map((e, i) => (
             <li
               key={e.clave}
               className="flex items-center gap-3 border-t border-border py-2 first:border-t-0 font-body text-[12.5px]"
             >
               <input
-                id={`elemento-${e.clave}`}
+                id={`elemento-${i}`}
                 type="checkbox"
                 checked={incluidos[e.clave] ?? e.incluido}
                 disabled={estado.restaurando}
                 onChange={(ev) => marcar(e.clave, ev.target.checked)}
                 className="h-4 w-4 accent-[var(--color-accent)]"
               />
-              <label htmlFor={`elemento-${e.clave}`} className="font-mono">
+              <label htmlFor={`elemento-${i}`} className="font-mono">
                 {e.clave}
               </label>
               <span className="ml-auto text-text-muted">
@@ -383,26 +388,32 @@ function ModalRestaurar({
           mientras dure la restauración.
         </p>
         <ul className="flex flex-col gap-1">
-          {copia.elementos.map((e) => (
+          {copia.elementos.map((e, i) => (
             <li
               key={e.clave}
               className="flex flex-wrap items-center gap-2 font-body text-[12.5px]"
             >
+              {/* The key can hold spaces and slashes: not valid in an id. */}
               <input
-                id={`restaurar-${e.clave}`}
+                id={`restaurar-elemento-${i}`}
                 type="checkbox"
                 disabled={!e.restaurable}
                 checked={e.restaurable && claves.includes(e.clave)}
                 onChange={(ev) => alternar(e.clave, ev.target.checked)}
                 className="h-4 w-4 accent-[var(--color-accent)]"
               />
-              <label htmlFor={`restaurar-${e.clave}`} className="font-mono">
+              <label htmlFor={`restaurar-elemento-${i}`} className="font-mono">
                 {e.clave}
               </label>
-              {!e.restaurable && (
+              {e.noRestaurable === "a_mano" && (
                 <Link href="/guia" className="text-xs text-accent underline">
                   Se restaura a mano
                 </Link>
+              )}
+              {e.noRestaurable === "incompleta" && (
+                <span className="text-xs text-text-muted">
+                  No se copió entero en esta copia
+                </span>
               )}
             </li>
           ))}

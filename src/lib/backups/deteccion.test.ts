@@ -592,6 +592,7 @@ describe("detectarProyecto", () => {
       valida: false,
       elementos: [],
       noCopiados: [],
+      error: "No se pudo consultar Docker",
     });
     expect(m.warn).toHaveBeenCalled();
   });

@@ -7,7 +7,7 @@ import {
   cargarConfigResuelta,
 } from "@/lib/backups/configuracion";
 import { iniciarCopiaProyecto, NadaQueCopiar } from "@/lib/backups/ciclo";
-import { claveDeRuta } from "@/lib/backups/comandos";
+import { claveConocida, copiaEntera } from "@/lib/backups/comandos";
 import { iniciarCopia } from "@/lib/backups/copia";
 import { detectarProyecto } from "@/lib/backups/deteccion";
 import { generarClave, kitRecuperacion } from "@/lib/backups/kit";
@@ -447,11 +447,15 @@ export const backupsRouter = router({
       return {
         habilitado: proyecto.backupsHabilitados,
         valida: deteccion.valida,
+        // Only what the screen shows: container ids and host paths stay in
+        // the server.
         elementos: deteccion.elementos.map((e) => ({
-          ...e,
+          clave: e.clave,
+          tipo: e.tipo,
           incluido: !excluidos.has(e.clave),
         })),
         noCopiados: deteccion.noCopiados,
+        errorDeteccion: deteccion.error ?? null,
         ultima,
         restaurando: estaRestaurando(proyecto.id),
         enCurso: hayOperacionEnCurso(),
@@ -516,12 +520,20 @@ export const backupsRouter = router({
         const grupos = new Map<string, typeof snapshots>();
         for (const s of snapshots)
           grupos.set(s.backupId, [...(grupos.get(s.backupId) ?? []), s]);
+        const registrados = await prisma.elementoCopia.findMany({
+          where: { backupId: { in: [...grupos.keys()] } },
+          select: { backupId: true, clave: true, resultado: true },
+        });
         return [...grupos.entries()]
           .map(([id, miembros]) => {
             const conBytes = miembros.filter((s) => s.bytes !== null);
-            const claves = [
-              ...new Set(miembros.map((s) => claveDeRuta(s.ruta))),
-            ];
+            const porClave = new Map<string, typeof miembros>();
+            for (const s of miembros) {
+              const clave = claveConocida(s.ruta);
+              // A snapshot written by another version must not hide the rest.
+              if (clave)
+                porClave.set(clave, [...(porClave.get(clave) ?? []), s]);
+            }
             return {
               id,
               fecha: new Date(
@@ -531,10 +543,18 @@ export const backupsRouter = router({
               bytes: conBytes.length
                 ? conBytes.reduce((a, s) => a + Number(s.bytes), 0)
                 : null,
-              elementos: claves.map((clave) => ({
-                clave,
-                restaurable: !clave.startsWith("datos:.panel/"),
-              })),
+              elementos: [...porClave.entries()].map(([clave, partes]) => {
+                const noRestaurable = clave.startsWith("datos:.panel/")
+                  ? ("a_mano" as const)
+                  : copiaEntera(
+                        clave,
+                        partes,
+                        registrados.filter((r) => r.backupId === id),
+                      )
+                    ? null
+                    : ("incompleta" as const);
+                return { clave, restaurable: !noRestaurable, noRestaurable };
+              }),
             };
           })
           .sort((a, b) => b.fecha.getTime() - a.fecha.getTime());

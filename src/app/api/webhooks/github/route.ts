@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { env } from "@/env";
 import { estaRestaurando } from "@/lib/backups/restaurando";
 import { logger } from "@/lib/logger";
+import { TRPCError } from "@trpc/server";
 import { lanzarDeploy } from "@/server/routers/proyectos";
 
 const pushPayloadSchema = z.object({
@@ -86,14 +87,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const proyectos = candidatos.filter((p) =>
     urlsRecibidas.some((u) => mismoRepositorio(p.repositorioUrl!, u)),
   );
+  const log = logger.child({ module: "webhook" });
   const libres = proyectos.filter((p) => !estaRestaurando(p.id));
+  const restaurando = proyectos.filter((p) => !libres.includes(p));
+  if (restaurando.length > 0) {
+    log.warn(
+      { proyectos: restaurando.map((p) => p.id) },
+      "Push ignorado: los Proyectos se están restaurando",
+    );
+  }
   if (proyectos.length > 0 && libres.length === 0) {
-    logger
-      .child({ module: "webhook" })
-      .warn(
-        { proyectos: proyectos.map((p) => p.id) },
-        "Push ignorado: los Proyectos se están restaurando",
-      );
     return NextResponse.json(
       { ok: false, reason: "restaurando" },
       { status: 409 },
@@ -110,14 +113,36 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // GitHub gives up after 10s, so the deploy runs in the background.
-  await Promise.all(
+  const resultados = await Promise.allSettled(
     desplegables.map((p) =>
       lanzarDeploy(p, { rama, sha: payload.after, origen: "webhook" }),
     ),
   );
+  const desplegados: string[] = [];
+  const enConflicto: string[] = [];
+  for (const [i, r] of resultados.entries()) {
+    const { id } = desplegables[i];
+    if (r.status === "fulfilled") desplegados.push(id);
+    // A restore started after the check above: the same answer as before it.
+    else if (r.reason instanceof TRPCError && r.reason.code === "CONFLICT")
+      enConflicto.push(id);
+    else throw r.reason;
+  }
+  if (enConflicto.length > 0) {
+    log.warn(
+      { proyectos: enConflicto },
+      "Push ignorado: la restauración empezó a la vez",
+    );
+  }
+  if (desplegados.length === 0) {
+    return NextResponse.json(
+      { ok: false, reason: "restaurando" },
+      { status: 409 },
+    );
+  }
 
   return NextResponse.json(
-    { ok: true, deployed: desplegables.map((p) => p.id) },
+    { ok: true, deployed: desplegados },
     { status: 202 },
   );
 }

@@ -69,6 +69,32 @@ export function claveDeRuta(ruta: string): string {
   throw new Error(`Ruta de copia no reconocida: ${ruta}`);
 }
 
+export function claveConocida(ruta: string): string | null {
+  try {
+    return claveDeRuta(ruta);
+  } catch {
+    return null;
+  }
+}
+
+// A failed element may have left some bases without others (or without
+// roles): restoring that would silently drop data. The listing and the
+// restore apply the same rule.
+export function copiaEntera(
+  clave: string,
+  partes: { ruta: string }[],
+  registrados: { clave: string; resultado: string }[],
+): boolean {
+  const filas = registrados.filter((r) => r.clave === clave);
+  if (filas.length > 0) return filas.every((r) => r.resultado === "exito");
+  // No row (Panel recovered on a new VPS): the snapshots must show it finished.
+  // A database is written last as _roles.sql (Postgres) or todo.sql (MySQL).
+  if (!clave.startsWith("bd:")) return true;
+  return partes.some(
+    (s) => s.ruta.endsWith("/_roles.sql") || s.ruta.endsWith("/todo.sql"),
+  );
+}
+
 const USUARIO_PG = '"${POSTGRES_USER:-postgres}"';
 
 function exec(contenedorId: string, script: string, stdin = false): Proceso {

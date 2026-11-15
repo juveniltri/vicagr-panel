@@ -22,6 +22,7 @@ import { prisma } from "@/lib/prisma";
 import { estaRestaurando } from "@/lib/backups/restaurando";
 import { lanzarDeploy } from "@/server/routers/proyectos";
 import { LIMITE_CUERPO } from "@/lib/github/webhook";
+import { TRPCError } from "@trpc/server";
 import { POST } from "./route";
 
 const proyectoCrm = {
@@ -177,6 +178,51 @@ describe("POST /api/webhooks/github", () => {
     expect(await res.json()).toEqual({ ok: true, deployed: ["p2"] });
     expect(lanzarDeploy).toHaveBeenCalledTimes(1);
     expect(lanzarDeploy).toHaveBeenCalledWith(otro, expect.anything());
+    // The skipped one leaves a trace too.
+    expect(avisos).toHaveBeenCalledWith(
+      { proyectos: ["p1"] },
+      "Push ignorado: los Proyectos se están restaurando",
+    );
+  });
+
+  // A restore marked between the check and the deploy: same answer as above,
+  // not a 500 that GitHub would show as a failed delivery.
+  it("si la restauración empieza a la vez, 409 y no 500", async () => {
+    vi.mocked(lanzarDeploy).mockRejectedValueOnce(
+      new TRPCError({ code: "CONFLICT", message: "restaurando" }),
+    );
+
+    const res = await POST(peticion(JSON.stringify(pushPayload)));
+
+    expect(res.status).toBe(409);
+    expect(avisos).toHaveBeenCalledWith(
+      { proyectos: ["p1"] },
+      "Push ignorado: la restauración empezó a la vez",
+    );
+  });
+
+  it("con varios Proyectos, despliega los demás aunque uno choque con una restauración", async () => {
+    const otro = { ...proyectoCrm, id: "p2" };
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+      proyectoCrm,
+      otro,
+    ] as never);
+    vi.mocked(lanzarDeploy)
+      .mockRejectedValueOnce(new TRPCError({ code: "CONFLICT", message: "x" }))
+      .mockResolvedValueOnce({} as never);
+
+    const res = await POST(peticion(JSON.stringify(pushPayload)));
+
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ ok: true, deployed: ["p2"] });
+  });
+
+  it("cualquier otro error al lanzar el deploy sigue siendo un error", async () => {
+    vi.mocked(lanzarDeploy).mockRejectedValueOnce(new Error("BD caída"));
+
+    await expect(POST(peticion(JSON.stringify(pushPayload)))).rejects.toThrow(
+      "BD caída",
+    );
   });
 
   // The commit ends up as an argument to `git checkout`.
