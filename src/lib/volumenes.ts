@@ -31,21 +31,13 @@ export function resolverRutaSegura(
   return ruta.startsWith(raiz + path.sep) ? ruta : null;
 }
 
-// The text check above is not enough: a container writes into its own volume
-// and can leave a symlink there pointing at another Cliente's files or at the
-// VPS. Every existing component is checked with lstat, never followed.
-export async function resolverRutaSinEnlaces(
-  base: string,
-  relativa: string,
-  {
-    permitirRaiz = true,
-    // Deleting acts on the link itself, so the last component may be one.
-    permitirEnlaceFinal = false,
-  }: { permitirRaiz?: boolean; permitirEnlaceFinal?: boolean } = {},
-): Promise<string | null> {
-  const ruta = resolverRutaSegura(base, relativa, { permitirRaiz });
-  if (!ruta) return null;
-  const raiz = path.resolve(base);
+// Every existing component of ruta below raiz must be a real entry, not a
+// link. ENOENT ends the walk: nothing below a missing one exists either.
+async function sinEnlaces(
+  raiz: string,
+  ruta: string,
+  permitirEnlaceFinal = false,
+): Promise<boolean> {
   const partes = path.relative(raiz, ruta).split(path.sep).filter(Boolean);
   let actual = raiz;
   for (const [i, parte] of partes.entries()) {
@@ -54,17 +46,55 @@ export async function resolverRutaSinEnlaces(
     try {
       info = await lstat(actual);
     } catch (err) {
-      // Not there yet (upload, new folder): nothing below it exists either.
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") break;
-      return null;
+      return (err as NodeJS.ErrnoException).code === "ENOENT";
     }
     if (
       info.isSymbolicLink() &&
       !(permitirEnlaceFinal && i === partes.length - 1)
     )
-      return null;
+      return false;
   }
-  return ruta;
+  return true;
+}
+
+// The folder of a Volumen lives in the Proyecto's checkout: a link committed to
+// the repo, or left by a container that mounts a parent folder, would make
+// Docker mount whatever it points at (it follows links in a bind source, on
+// the host), and the helpers below act there as root.
+export async function volumenSinEnlaces(
+  reposDir: string,
+  base: string,
+): Promise<boolean> {
+  const desde = path.resolve(reposDir);
+  const ruta = path.resolve(base);
+  if (!ruta.startsWith(desde + path.sep)) return false;
+  return sinEnlaces(desde, ruta);
+}
+
+// The text check above is not enough: a container writes into its own volume
+// and can leave a symlink there pointing at another Cliente's files or at the
+// VPS. Every existing component is checked with lstat, never followed; with
+// reposDir, also the folders from it down to the Volumen.
+export async function resolverRutaSinEnlaces(
+  base: string,
+  relativa: string,
+  {
+    permitirRaiz = true,
+    // Deleting acts on the link itself, so the last component may be one.
+    permitirEnlaceFinal = false,
+    reposDir,
+  }: {
+    permitirRaiz?: boolean;
+    permitirEnlaceFinal?: boolean;
+    reposDir?: string;
+  } = {},
+): Promise<string | null> {
+  const ruta = resolverRutaSegura(base, relativa, { permitirRaiz });
+  if (!ruta) return null;
+  if (reposDir && !(await volumenSinEnlaces(reposDir, base))) return null;
+  return (await sinEnlaces(path.resolve(base), ruta, permitirEnlaceFinal))
+    ? ruta
+    : null;
 }
 
 // The files in a Volumen belong to the container's users (root for nginx,

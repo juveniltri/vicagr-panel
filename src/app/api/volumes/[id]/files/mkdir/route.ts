@@ -50,6 +50,7 @@ export async function POST(
   const relative = body.path ? `${body.path}/${body.nombre}` : body.nombre;
   const target = await resolverRutaSinEnlaces(base, relative, {
     permitirRaiz: false,
+    reposDir: env.REPOS_DIR,
   });
   if (!target) return new Response("Invalid path", { status: 400 });
 

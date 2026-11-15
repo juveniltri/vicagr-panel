@@ -95,6 +95,9 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
 - **Gestor de ficheros**: un contenedor podía dejar en su Volumen un enlace simbólico a ficheros
   de otro Cliente o de la VPS y el Panel lo seguía al listar, descargar, subir o borrar. Los enlaces
   se muestran como enlaces y no se abren ni se descargan; borrarlos elimina solo el enlace.
+- **Carpeta del Volumen**: si la carpeta de un Volumen (o una de las que la contienen) es un enlace
+  simbólico, por ejemplo uno subido al repositorio, el deploy se cancela y el gestor de ficheros no
+  la abre: Docker la habría montado apuntando a otra carpeta de la VPS.
 
 ### Al actualizar
 

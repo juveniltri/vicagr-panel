@@ -17,6 +17,7 @@ import {
   resolverRutaSegura,
   resolverRutaSinEnlaces,
   rutaHostVolumen,
+  volumenSinEnlaces,
 } from "./volumenes";
 
 const base = "/var/vicagr/repos/acme/web/volumes/uploads";
@@ -123,6 +124,55 @@ describe("resolverRutaSinEnlaces", () => {
     expect(
       await resolverRutaSinEnlaces(base, "fotos/enlace/x", opciones),
     ).toBeNull();
+  });
+
+  // The Volumen folder sits in the Proyecto's checkout: Docker would follow a
+  // link there when mounting it, and the helpers act as root.
+  describe("con reposDir", () => {
+    const repos = "/var/vicagr/repos";
+    const opciones = { reposDir: repos };
+
+    it.each(["acme/web", "acme/web/volumes", "acme/web/volumes/uploads"])(
+      "rechaza un Volumen bajo el enlace %s",
+      async (enlace) => {
+        enlaces.add(path.resolve(repos, enlace));
+        expect(
+          await resolverRutaSinEnlaces(base, "a.jpg", opciones),
+        ).toBeNull();
+      },
+    );
+
+    it("resuelve si no hay enlaces de reposDir al Volumen", async () => {
+      expect(await resolverRutaSinEnlaces(base, "a.jpg", opciones)).toBe(
+        en("a.jpg"),
+      );
+    });
+
+    it("rechaza un Volumen fuera de reposDir", async () => {
+      expect(
+        await resolverRutaSinEnlaces(base, "a.jpg", { reposDir: "/otro" }),
+      ).toBeNull();
+    });
+  });
+});
+
+describe("volumenSinEnlaces", () => {
+  beforeEach(() => {
+    vi.mocked(lstat).mockImplementation(async (ruta) => {
+      if (String(ruta).endsWith("uploads"))
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      return { isSymbolicLink: () => false } as never;
+    });
+  });
+
+  it("acepta un Volumen que aún no existe (primer deploy)", async () => {
+    expect(await volumenSinEnlaces("/var/vicagr/repos", base)).toBe(true);
+  });
+
+  it("rechaza la propia carpeta de repos como Volumen", async () => {
+    expect(
+      await volumenSinEnlaces("/var/vicagr/repos", "/var/vicagr/repos"),
+    ).toBe(false);
   });
 });
 

@@ -4,6 +4,7 @@ import {
   readFile,
   readdir,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -55,9 +56,9 @@ function subir(query: Record<string, string>, cuerpo: string | null) {
 
 describe("POST /api/volumes/[id]/files", () => {
   beforeEach(async () => {
-    if (raiz.dir) await rm(raiz.dir, { recursive: true, force: true });
-    raiz.dir = await mkdtemp(path.join(tmpdir(), "vicagr-subida-"));
+    if (raiz.repos) await rm(raiz.repos, { recursive: true, force: true });
     raiz.repos = await mkdtemp(path.join(tmpdir(), "vicagr-repos-"));
+    raiz.dir = await mkdtemp(path.join(raiz.repos, "volumen-"));
     vi.mocked(auth).mockResolvedValue({ user: { id: "u1" } } as never);
     vi.mocked(prisma.volumen.findUnique).mockResolvedValue({
       id: "v1",
@@ -67,8 +68,23 @@ describe("POST /api/volumes/[id]/files", () => {
   });
 
   afterAll(async () => {
-    await rm(raiz.dir, { recursive: true, force: true });
     await rm(raiz.repos, { recursive: true, force: true });
+  });
+
+  // Docker follows a link in the source of a bind mount: the helper would
+  // write as root wherever the Volumen folder points.
+  it("rechaza un Volumen cuya carpeta es un enlace simbólico", async () => {
+    const fuera = await mkdtemp(path.join(tmpdir(), "vicagr-fuera-"));
+    const enlace = path.join(raiz.repos, "enlazado");
+    await symlink(fuera, enlace, "junction");
+    raiz.dir = enlace;
+    try {
+      expect((await subir({ nombre: "a.txt" }, "hola")).status).toBe(400);
+      expect(moverAVolumen).not.toHaveBeenCalled();
+      expect(await readdir(fuera)).toEqual([]);
+    } finally {
+      await rm(fuera, { recursive: true, force: true });
+    }
   });
 
   it("devuelve 401 sin sesión", async () => {

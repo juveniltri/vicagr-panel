@@ -13,6 +13,7 @@ import { env } from "@/env";
 import { IMAGEN_AUXILIAR } from "@/lib/backups/comandos";
 import { ejecutar, encadenar, ErrorProceso } from "@/lib/backups/procesos";
 import { logger } from "@/lib/logger";
+import { volumenSinEnlaces } from "@/lib/volumenes";
 import {
   apuntarEnvFile,
   encontrarServicioPorPuerto,
@@ -560,6 +561,12 @@ async function sembrarVolumenesNuevos(params: {
   const { projectSlug, composeFile, imagen, onLog, signal } = params;
   const vacios: typeof params.volumenes = [];
   for (const v of params.volumenes) {
+    // The checkout can bring a link where the Volumen goes: the compose and the
+    // helpers below would mount what it points at.
+    if (!(await volumenSinEnlaces(env.REPOS_DIR, v.rutaHost)))
+      throw new Error(
+        `El volumen ${v.rutaContenedor} pasa por un enlace simbólico en el repositorio: se cancela el deploy`,
+      );
     await mkdir(v.rutaHost, { recursive: true });
     if ((await readdir(v.rutaHost)).length === 0) vacios.push(v);
   }

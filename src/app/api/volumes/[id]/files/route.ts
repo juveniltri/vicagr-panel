@@ -56,7 +56,9 @@ export async function GET(
   );
 
   const subpath = req.nextUrl.searchParams.get("path") ?? "";
-  const target = await resolverRutaSinEnlaces(base, subpath);
+  const target = await resolverRutaSinEnlaces(base, subpath, {
+    reposDir: env.REPOS_DIR,
+  });
   if (!target) return new Response("Invalid path", { status: 400 });
 
   try {
@@ -105,7 +107,9 @@ export async function POST(
   );
 
   const subpath = req.nextUrl.searchParams.get("path") ?? "";
-  const target = await resolverRutaSinEnlaces(base, subpath);
+  const target = await resolverRutaSinEnlaces(base, subpath, {
+    reposDir: env.REPOS_DIR,
+  });
   if (!target) return new Response("Invalid path", { status: 400 });
 
   const nombre = path.basename(req.nextUrl.searchParams.get("nombre") ?? "");
@@ -179,6 +183,7 @@ export async function DELETE(
   const target = await resolverRutaSinEnlaces(base, subpath, {
     permitirRaiz: false,
     permitirEnlaceFinal: true,
+    reposDir: env.REPOS_DIR,
   });
   if (!target) return new Response("Invalid path", { status: 400 });
 
