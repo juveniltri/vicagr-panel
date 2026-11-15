@@ -163,7 +163,7 @@ NOTE:  contexto que sorprendería a un futuro lector
 - Variables sensibles: nunca en `NEXT_PUBLIC_*`
 - CSRF: tokens en todas las operaciones que muten estado
 - Headers HTTP obligatorios: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`
-- CSP: definida y activa en producción
+- CSP: definida y activa en producción, en `src/proxy.ts` (no en `next.config.ts`) con un nonce por petición: `script-src 'self' 'nonce-…'`, sin `unsafe-*`. Todo script inline necesita `nonce` (el layout lo lee de `x-nonce`); por eso todas las páginas son dinámicas. `style-src` sigue con `'unsafe-inline'` (atributos `style` de Monaco y React)
 - TLS: mínimo TLS 1.2 — Traefik gestiona la negociación
 - Webhook secret de GitHub: validar HMAC-SHA256 en cada petición entrante
 - Sesión: JWT de 7 días validado contra la BD en cada `auth()` (`sesionVigente`, `src/lib/sesion.ts`): un usuario eliminado o con la contraseña cambiada (`User.sesionesDesde`) pierde la sesión al momento

@@ -8,10 +8,5 @@ export const authConfig: NextAuthConfig = {
   // nonce) must stay Lax or the provider's redirect back arrives without them.
   // Auth.js merges this over its defaults (name, HttpOnly, Secure).
   cookies: { sessionToken: { options: { sameSite: "strict" } } },
-  callbacks: {
-    authorized({ auth }) {
-      return !!auth?.user;
-    },
-  },
   providers: [],
 };

@@ -51,7 +51,7 @@ Sigue pendiente de la **2.4.0**: verificar en real lo de «Sin verificar en real
 
 - [x] **Tests E2E** — 3.1.0, `npm run test:e2e` (Playwright + axe contra el stack de producción).
 - [x] **Alerta de disco** — 3.1.0.
-- [ ] **CSP estricta** (3.2.0) — hoy permite `'unsafe-eval'` y `'unsafe-inline'` en scripts. Ver qué lo exige (Monaco, script anti-FOUC) y pasar a nonces.
+- [x] **CSP estricta** (3.2.0) — `script-src 'self' 'nonce-…'` sin `'unsafe-eval'` ni `'unsafe-inline'`: `src/proxy.ts` genera un nonce por petición (Next.js lo pone en sus scripts; el layout, en el anti-FOUC). `style-src` mantiene `'unsafe-inline'` porque Monaco y React escriben atributos `style`, que un nonce no cubre.
 - [x] **Cobertura según la regla 100/80** — 3.2.0: un umbral del 100 % para todo `src/lib` (salvo `src/lib/docker`, infraestructura) en vez de la lista de ficheros.
 - [x] **Scripts muertos** — 3.2.0: `test:integration` eliminado; `test:e2e` ya funciona (3.1.0).
 - [x] **Fuentes locales** — `next/font/local` con los ficheros en `src/app/fonts/`; el build ya no depende de Google.
