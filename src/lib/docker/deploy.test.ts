@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 const {
   mockExecFile,
@@ -63,16 +63,18 @@ const {
   };
 });
 
-const { mockReaddir, mockEjecutar, mockEncadenar, mockStat } = vi.hoisted(
-  () => ({
+const { mockReaddir, mockEjecutar, mockEncadenar, mockStat, mockLstat } =
+  vi.hoisted(() => ({
+    mockLstat: vi.fn<
+      (ruta: string) => Promise<{ isSymbolicLink: () => boolean }>
+    >(async () => ({ isSymbolicLink: () => false })),
     // Already owned by the image's user: nothing to hand over.
     mockStat: vi.fn().mockResolvedValue({ uid: 1000 }),
     // Not empty by default: only an empty volume is seeded.
     mockReaddir: vi.fn().mockResolvedValue(["ya-hay-datos"]),
     mockEjecutar: vi.fn().mockResolvedValue(""),
     mockEncadenar: vi.fn().mockResolvedValue(""),
-  }),
-);
+  }));
 
 vi.mock("@/lib/backups/procesos", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/backups/procesos")>()),
@@ -91,6 +93,7 @@ vi.mock("node:fs/promises", () => ({
   readFile: mockReadFile,
   readdir: mockReaddir,
   stat: mockStat,
+  lstat: mockLstat,
 }));
 vi.mock("@/env", () => ({
   env: {
@@ -1337,6 +1340,26 @@ describe("deployProyecto — Volúmenes nuevos", () => {
       expect.arrayContaining(["-v", `${rutaHost}:/destino`, "find"]),
       expect.anything(),
     );
+  });
+
+  // Docker follows a link in a bind source on the host: a repo with
+  // `volumes -> /etc` would mount the VPS's /etc, and the helpers act as root.
+  it("un enlace simbólico en la ruta del Volumen cancela el deploy sin montar nada", async () => {
+    const original = mockLstat.getMockImplementation();
+    onTestFinished(() => {
+      mockLstat.mockImplementation(original!);
+    });
+    mockLstat.mockImplementation(async (ruta: string) => ({
+      isSymbolicLink: () => /[\\/]volumes$/.test(ruta),
+    }));
+
+    await expect(deployProyecto(conVolumen)).rejects.toThrow(
+      "enlace simbólico",
+    );
+
+    expect(mockMkdir).not.toHaveBeenCalledWith(rutaHost, expect.anything());
+    expect(mockEncadenar).not.toHaveBeenCalled();
+    expect(mockSpawn).not.toHaveBeenCalled();
   });
 
   it("los Proyectos de tipo compose no siembran: el Panel no monta sus Volúmenes", async () => {

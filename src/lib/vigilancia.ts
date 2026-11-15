@@ -17,11 +17,17 @@ const global = globalThis as unknown as {
   vigilancia?: NodeJS.Timeout;
   fallosVigilancia?: Map<string, number>;
   discoAvisado?: boolean;
+  caidosAvisados?: Set<string>;
 };
 const fallos = (global.fallosVigilancia ??= new Map<string, number>());
+// Proyectos with a «caído» sent and no «recuperado» yet. Fixing one from the
+// Panel (Reiniciar, a deploy) marks it running directly, so the Estado alone
+// would never show the way back to whoever got the first message.
+const avisados = (global.caidosAvisados ??= new Set<string>());
 
 export function olvidarFallos(): void {
   fallos.clear();
+  avisados.clear();
   global.discoAvisado = false;
 }
 
@@ -126,17 +132,25 @@ export async function reconciliarEstados(): Promise<void> {
           p.estado === "running" &&
           lecturas >= LECTURAS_PARA_ERROR &&
           (await cambiar("error"))
-        )
+        ) {
+          avisados.add(p.id);
           avisar(
             "error",
             caidos.map((s) => `${s.servicio}: ${s.detalle}`).join("\n"),
           );
+        }
         continue;
       }
       fallos.delete(p.id);
 
+      const recuperado = () => {
+        avisados.delete(p.id);
+        avisar("exito", "Todos los Servicios vuelven a estar en marcha.");
+      };
       if (p.estado === "running" && !enMarcha) {
         await cambiar("stopped");
+      } else if (p.estado === "running" && avisados.has(p.id)) {
+        recuperado();
       } else if (
         p.estado === "error" &&
         enMarcha &&
@@ -145,7 +159,7 @@ export async function reconciliarEstados(): Promise<void> {
         p.deploys[0]?.resultado === "exito" &&
         (await cambiar("running"))
       ) {
-        avisar("exito", "Todos los Servicios vuelven a estar en marcha.");
+        recuperado();
       }
     }
   } catch (err) {

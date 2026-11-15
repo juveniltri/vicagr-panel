@@ -16,6 +16,30 @@ describe("crearLimitador", () => {
     expect(limitar("1.2.3.4")).toBe(true);
   });
 
+  // The per-account login limit counts only failed attempts: checking whether
+  // an account is blocked must not use one up.
+  it("bloqueado consulta sin gastar un intento", () => {
+    const limitar = crearLimitador({ max: 2, ventanaMs: 60_000 });
+
+    expect(limitar.bloqueado("cuenta")).toBe(false);
+    expect(limitar.bloqueado("cuenta")).toBe(false);
+    limitar("cuenta");
+    expect(limitar.bloqueado("cuenta")).toBe(false);
+    limitar("cuenta");
+    // Two failures used up: the next one would be refused.
+    expect(limitar.bloqueado("cuenta")).toBe(true);
+  });
+
+  it("bloqueado deja de estarlo cuando pasa la ventana", () => {
+    const limitar = crearLimitador({ max: 1, ventanaMs: 60_000 });
+    limitar("cuenta");
+    limitar("cuenta");
+
+    vi.advanceTimersByTime(60_000);
+
+    expect(limitar.bloqueado("cuenta")).toBe(false);
+  });
+
   it("cuenta cada clave por separado", () => {
     const limitar = crearLimitador({ max: 1, ventanaMs: 60_000 });
 

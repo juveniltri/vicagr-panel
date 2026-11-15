@@ -69,8 +69,9 @@
   --color-text-secondary: #a9adc4;
   --color-text-muted:     #8b8fa8;
 
-  --color-accent:       #6366f1;
-  --color-accent-hover: #4f46e5;
+  /* White text on it (buttons): 6.3:1, WCAG AA. */
+  --color-accent:       #4f46e5;
+  --color-accent-hover: #4338ca;
   --color-accent-text:  #a5b4fc;
 
   --color-state-running:   #22D3EE;
@@ -108,17 +109,21 @@
 
   --color-text-primary:   #0f172a;
   --color-text-secondary: #475569;
-  --color-text-muted:     #64748b;
+  /* WCAG AA (4.5:1) on every light background, also --color-background. */
+  --color-text-muted:     #5b6779;
 
-  --color-accent:       #6366f1;
-  --color-accent-hover: #4f46e5;
+  /* White text on it (buttons): 6.3:1, WCAG AA. */
+  --color-accent:       #4f46e5;
+  --color-accent-hover: #4338ca;
   --color-accent-text:  #4338ca;
 
-  --color-state-running:   #0ea5e9;
-  --color-state-stopped:   #94a3b8;
-  --color-state-success:   #22c55e;
-  --color-state-error:     #ef4444;
-  --color-state-deploying: #f59e0b;
+  /* Also used as text (counters, error and status messages): every one is at
+     least 4.5:1 (WCAG AA) on the light backgrounds. */
+  --color-state-running:   #0369a1;
+  --color-state-stopped:   #5b6779;
+  --color-state-success:   #15803d;
+  --color-state-error:     #b91c1c;
+  --color-state-deploying: #b45309;
 
   --color-running-bg:     #ecfeff;
   --color-running-text:   #0e7490;

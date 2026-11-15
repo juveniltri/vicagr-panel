@@ -78,7 +78,9 @@ export async function GET(
   );
 
   const subpath = req.nextUrl.searchParams.get("path") ?? "";
-  const dir = await resolverRutaSinEnlaces(base, subpath);
+  const dir = await resolverRutaSinEnlaces(base, subpath, {
+    reposDir: env.REPOS_DIR,
+  });
   if (!dir) return new Response("Invalid path", { status: 400 });
 
   const nombres = filesParam

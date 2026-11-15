@@ -8,11 +8,11 @@ vi.mock("@/lib/prisma", () => ({
   prisma: { volumen: { findUnique: vi.fn() } },
 }));
 vi.mock("node:fs/promises", () => ({
-  mkdir: vi.fn(),
   lstat: vi.fn(async () => ({ isSymbolicLink: () => false })),
 }));
 vi.mock("@/lib/volumenes", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/volumenes")>()),
+  crearCarpetaEnVolumen: vi.fn(),
   rutaHostVolumen: vi
     .fn()
     .mockReturnValue("/repos/cliente/proyecto/volumes/galeria"),
@@ -20,7 +20,7 @@ vi.mock("@/lib/volumenes", async (importOriginal) => ({
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { mkdir } from "node:fs/promises";
+import { crearCarpetaEnVolumen, YaExiste } from "@/lib/volumenes";
 import { POST } from "./route";
 
 const mockSession = {
@@ -89,18 +89,16 @@ describe("POST /api/volumes/[id]/files/mkdir", () => {
     vi.mocked(prisma.volumen.findUnique).mockResolvedValue(
       mockVolumen as never,
     );
-    vi.mocked(mkdir).mockResolvedValue(undefined);
+    vi.mocked(crearCarpetaEnVolumen).mockResolvedValue(undefined);
 
     const res = await POST(makeRequest({ path: "fotos", nombre: "2024" }), {
       params: Promise.resolve({ id: "v1" }),
     });
 
     expect(res.status).toBe(201);
-    expect(mkdir).toHaveBeenCalledWith(
+    expect(crearCarpetaEnVolumen).toHaveBeenCalledWith(
+      "/repos/cliente/proyecto/volumes/galeria",
       expect.stringContaining(path.join("fotos", "2024")),
-      {
-        recursive: false,
-      },
     );
   });
 
@@ -109,8 +107,7 @@ describe("POST /api/volumes/[id]/files/mkdir", () => {
     vi.mocked(prisma.volumen.findUnique).mockResolvedValue(
       mockVolumen as never,
     );
-    const err = Object.assign(new Error("EEXIST"), { code: "EEXIST" });
-    vi.mocked(mkdir).mockRejectedValue(err);
+    vi.mocked(crearCarpetaEnVolumen).mockRejectedValue(new YaExiste());
 
     const res = await POST(makeRequest({ path: "", nombre: "existente" }), {
       params: Promise.resolve({ id: "v1" }),

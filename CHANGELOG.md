@@ -5,7 +5,7 @@ Novedades. Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES
 cada versión con su fecha, un resumen de una línea y los apartados Novedades,
 Correcciones y Seguridad.
 
-## [3.1.0] - 2026-11-14
+## [3.1.0] - 2026-11-15
 
 Avisos cuando un Proyecto se cae y correcciones de la auditoría de noviembre: variables con
 caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y sesión.
@@ -14,8 +14,8 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
 
 - **Aviso de caída**: si un Servicio se cae, entra en bucle de reinicios o queda `unhealthy`, el
   Proyecto pasa a «error» en un par de minutos y llega un aviso «Proyecto caído» por los canales de
-  Configuración → Notificaciones; cuando vuelve, «Proyecto recuperado». Detener un Proyecto desde el
-  Panel no avisa.
+  Configuración → Notificaciones; cuando vuelve, «Proyecto recuperado», también si se arregla
+  desde el Panel. Detener un Proyecto desde el Panel no avisa.
 - **Alerta de disco**: aviso «Disco casi lleno» al llegar al 85 % de ocupación de la VPS y «Disco
   recuperado» al bajar del 80 %.
 - **Latido para un vigilante externo** (opcional, `LATIDO_URL`): el Panel llama cada minuto a un
@@ -70,6 +70,11 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
   volúmenes se declaran en su `docker-compose.yml`.
 - **Gestor de ficheros**: subir o descargar ficheros grandes ya no deja al Panel sin memoria. Máximo
   de 2 GB por fichero subido; para más, usa SFTP.
+- **Gestor de ficheros → propietario**: subir, crear carpetas y borrar ya funciona en los volúmenes
+  cuyos ficheros son del contenedor (WordPress, nginx…). Lo nuevo queda con el propietario de la
+  carpeta donde cae, así que la app puede seguir usándolo.
+- **Contraste en el tema claro**: el texto secundario, los colores de estado y el botón principal
+  se leen mejor (cumplen WCAG AA).
 
 ### Seguridad
 
@@ -85,11 +90,14 @@ caracteres especiales, volúmenes que perdían ficheros, gestor de ficheros y se
   25 MB.
 - **Health check**: `/api/health` sin sesión solo dice si el Panel está bien; la versión y el detalle
   se ven con sesión y en el Dashboard.
-- **Sesión**: la cookie pasa a `SameSite=Strict` y el login limita los intentos también por cuenta
-  (10 en 15 minutos), no solo por IP.
+- **Sesión**: la cookie pasa a `SameSite=Strict` y el login limita también los intentos fallidos
+  por cuenta (10 en 15 minutos), no solo por IP.
 - **Gestor de ficheros**: un contenedor podía dejar en su Volumen un enlace simbólico a ficheros
   de otro Cliente o de la VPS y el Panel lo seguía al listar, descargar, subir o borrar. Los enlaces
   se muestran como enlaces y no se abren ni se descargan; borrarlos elimina solo el enlace.
+- **Carpeta del Volumen**: si la carpeta de un Volumen (o una de las que la contienen) es un enlace
+  simbólico, por ejemplo uno subido al repositorio, el deploy se cancela y el gestor de ficheros no
+  la abre: Docker la habría montado apuntando a otra carpeta de la VPS.
 
 ### Al actualizar
 

@@ -175,6 +175,34 @@ describe("reconciliarEstados", () => {
     expect(prisma.proyecto.updateMany).not.toHaveBeenCalled();
   });
 
+  // Reiniciar or a deploy from the Panel set running themselves, so the
+  // Estado never goes through error -> running here.
+  it("avisa de la recuperación aunque se arreglara desde el Panel", async () => {
+    hay(proyecto("running"));
+    docker(servicio("web", "error", "Exited (1)"));
+    await reconciliarEstados();
+    await reconciliarEstados();
+    vi.mocked(enviarNotificacion).mockClear();
+
+    hay(proyecto("running"));
+    docker(servicio("web", "running"));
+    await reconciliarEstados();
+    await reconciliarEstados();
+
+    expect(enviarNotificacion).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ evento: "servicio", resultado: "exito" }),
+    );
+  });
+
+  it("un Proyecto en marcha del que no se avisó caída no recibe «recuperado»", async () => {
+    hay(proyecto("running"));
+    docker(servicio("web", "running"));
+
+    await reconciliarEstados();
+
+    expect(enviarNotificacion).not.toHaveBeenCalled();
+  });
+
   it("un Proyecto ya en error con Servicios caídos no vuelve a avisar", async () => {
     hay(proyecto("error"));
     docker(servicio("web", "error", "Exited (1)"));
