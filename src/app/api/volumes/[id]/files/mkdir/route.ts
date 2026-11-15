@@ -1,9 +1,13 @@
-import { mkdir } from "node:fs/promises";
 import { type NextRequest } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
-import { resolverRutaSinEnlaces, rutaHostVolumen } from "@/lib/volumenes";
+import {
+  crearCarpetaEnVolumen,
+  resolverRutaSinEnlaces,
+  rutaHostVolumen,
+  YaExiste,
+} from "@/lib/volumenes";
 import { prisma } from "@/lib/prisma";
 
 const bodySchema = z.object({
@@ -50,10 +54,10 @@ export async function POST(
   if (!target) return new Response("Invalid path", { status: 400 });
 
   try {
-    await mkdir(target, { recursive: false });
+    await crearCarpetaEnVolumen(base, target);
     return new Response(null, { status: 201 });
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+    if (err instanceof YaExiste) {
       return new Response("Already exists", { status: 409 });
     }
     throw err;

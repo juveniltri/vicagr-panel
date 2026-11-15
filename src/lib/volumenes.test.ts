@@ -2,9 +2,18 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:fs/promises", () => ({ lstat: vi.fn() }));
+vi.mock("@/lib/backups/procesos", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/backups/procesos")>()),
+  ejecutar: vi.fn(),
+}));
 
 import { lstat } from "node:fs/promises";
+import { ejecutar, ErrorProceso } from "@/lib/backups/procesos";
 import {
+  borrarEnVolumen,
+  crearCarpetaEnVolumen,
+  moverAVolumen,
+  YaExiste,
   resolverRutaSegura,
   resolverRutaSinEnlaces,
   rutaHostVolumen,
@@ -114,5 +123,96 @@ describe("resolverRutaSinEnlaces", () => {
     expect(
       await resolverRutaSinEnlaces(base, "fotos/enlace/x", opciones),
     ).toBeNull();
+  });
+});
+
+describe("escrituras en el Volumen", () => {
+  const ultimaLlamada = () => {
+    const [comando, args] = vi.mocked(ejecutar).mock.calls.at(-1)!;
+    const i = args.indexOf("-c");
+    return {
+      comando,
+      args,
+      script: args[i + 1],
+      posicionales: args.slice(i + 3),
+    };
+  };
+
+  beforeEach(() => {
+    vi.mocked(ejecutar).mockReset();
+    vi.mocked(ejecutar).mockResolvedValue("");
+  });
+
+  // The Panel cannot write files owned by the container's users.
+  it("se hacen como root en un contenedor sin red que solo monta el Volumen", async () => {
+    await borrarEnVolumen(base, path.resolve(base, "fotos/a.jpg"));
+
+    const { comando, args } = ultimaLlamada();
+    expect(comando).toBe("docker");
+    expect(args.slice(0, 6)).toEqual([
+      "run",
+      "--rm",
+      "--network",
+      "none",
+      "-v",
+      `${base}:/v`,
+    ]);
+    expect(args).toContain("busybox:1.37.0");
+  });
+
+  it("borrar pasa la ruta como argumento, nunca dentro del script", async () => {
+    await borrarEnVolumen(base, path.resolve(base, 'raro"; rm -rf x'));
+
+    const { script, posicionales } = ultimaLlamada();
+    expect(script).toBe('set -e; rm -rf -- "$1"');
+    expect(posicionales).toEqual(['/v/raro"; rm -rf x']);
+  });
+
+  it("crear carpeta la deja con el propietario de la carpeta donde se crea", async () => {
+    await crearCarpetaEnVolumen(base, path.resolve(base, "fotos/2026"));
+
+    const { script, posicionales } = ultimaLlamada();
+    expect(script).toContain('stat -c %u:%g "$(dirname "$1")"');
+    expect(script).toContain('mkdir "$1"; chown "$o" "$1"');
+    expect(posicionales).toEqual(["/v/fotos/2026"]);
+  });
+
+  it("crear una carpeta que ya existe da YaExiste", async () => {
+    vi.mocked(ejecutar).mockRejectedValue(
+      new ErrorProceso(
+        "docker terminó con código 1:\nmkdir: can't create directory '/v/fotos': File exists",
+        1,
+        "",
+      ),
+    );
+
+    await expect(
+      crearCarpetaEnVolumen(base, path.resolve(base, "fotos")),
+    ).rejects.toBeInstanceOf(YaExiste);
+  });
+
+  it("otros fallos al crear la carpeta se propagan", async () => {
+    vi.mocked(ejecutar).mockRejectedValue(new Error("docker caído"));
+
+    await expect(
+      crearCarpetaEnVolumen(base, path.resolve(base, "fotos")),
+    ).rejects.toThrow("docker caído");
+  });
+
+  it("mover una subida copia el temporal del Panel, le da el propietario de la carpeta y lo renombra", async () => {
+    await moverAVolumen(
+      base,
+      "/var/vicagr/repos/.subidas/abc-123",
+      path.resolve(base, "fotos/a.jpg"),
+    );
+
+    const { args, script, posicionales } = ultimaLlamada();
+    expect(args).toEqual(
+      expect.arrayContaining(["-v", "/var/vicagr/repos/.subidas:/subidas:ro"]),
+    );
+    expect(script).toContain(
+      'cp "/subidas/$2" "$t"; chown "$o" "$t"; mv -f "$t" "$1"',
+    );
+    expect(posicionales).toEqual(["/v/fotos/a.jpg", "abc-123"]);
   });
 });

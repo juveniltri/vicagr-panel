@@ -1,26 +1,49 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const { raiz } = vi.hoisted(() => ({ raiz: { dir: "" } }));
+const { raiz } = vi.hoisted(() => ({ raiz: { dir: "", repos: "" } }));
 
-vi.mock("@/env", () => ({ env: { REPOS_DIR: "/repos" } }));
+vi.mock("@/env", () => ({
+  env: {
+    get REPOS_DIR() {
+      return raiz.repos;
+    },
+  },
+}));
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: { volumen: { findUnique: vi.fn() } },
 }));
 // Real files in a temp folder: the point is what ends up on disk.
-vi.mock("@/lib/volumenes", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/volumenes")>()),
-  MAX_SUBIDA_BYTES: 10,
-  rutaHostVolumen: () => raiz.dir,
-}));
+// The final move into the Volumen runs in a helper container; here it is a
+// plain copy so the tests can look at the result on disk.
+vi.mock("@/lib/volumenes", async (importOriginal) => {
+  const { copyFile } = await import("node:fs/promises");
+  return {
+    ...(await importOriginal<typeof import("@/lib/volumenes")>()),
+    MAX_SUBIDA_BYTES: 10,
+    rutaHostVolumen: () => raiz.dir,
+    moverAVolumen: vi.fn((_base: string, temporal: string, destino: string) =>
+      copyFile(temporal, destino),
+    ),
+    borrarEnVolumen: vi.fn(),
+  };
+});
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { POST } from "./route";
+import { borrarEnVolumen, moverAVolumen } from "@/lib/volumenes";
+import { DELETE, POST } from "./route";
 
 const params = { params: Promise.resolve({ id: "v1" }) };
 
@@ -34,6 +57,7 @@ describe("POST /api/volumes/[id]/files", () => {
   beforeEach(async () => {
     if (raiz.dir) await rm(raiz.dir, { recursive: true, force: true });
     raiz.dir = await mkdtemp(path.join(tmpdir(), "vicagr-subida-"));
+    raiz.repos = await mkdtemp(path.join(tmpdir(), "vicagr-repos-"));
     vi.mocked(auth).mockResolvedValue({ user: { id: "u1" } } as never);
     vi.mocked(prisma.volumen.findUnique).mockResolvedValue({
       id: "v1",
@@ -42,14 +66,19 @@ describe("POST /api/volumes/[id]/files", () => {
     } as never);
   });
 
-  afterAll(() => rm(raiz.dir, { recursive: true, force: true }));
+  afterAll(async () => {
+    await rm(raiz.dir, { recursive: true, force: true });
+    await rm(raiz.repos, { recursive: true, force: true });
+  });
 
   it("devuelve 401 sin sesión", async () => {
     vi.mocked(auth).mockResolvedValue(null as never);
     expect((await subir({ nombre: "a.txt" }, "hola")).status).toBe(401);
   });
 
+  // The file manager uploads into the folder it is showing, which exists.
   it("guarda el cuerpo de la petición como fichero en la carpeta pedida", async () => {
+    await mkdir(path.join(raiz.dir, "fotos"));
     const res = await subir({ path: "fotos", nombre: "a.txt" }, "hola");
 
     expect(res.status).toBe(201);
@@ -85,5 +114,53 @@ describe("POST /api/volumes/[id]/files", () => {
 
     expect(res.status).toBe(201);
     expect(await readdir(raiz.dir)).toEqual(["fuera.txt"]);
+  });
+
+  // The Panel cannot write in a folder owned by the container's user: the
+  // upload is written to the Panel's own folder and moved in by the helper.
+  it("escribe la subida en la carpeta del Panel y la mueve al Volumen", async () => {
+    await subir({ nombre: "a.txt" }, "hola");
+
+    const [base, temporal, destino] = vi.mocked(moverAVolumen).mock.calls[0];
+    expect(base).toBe(raiz.dir);
+    expect(path.dirname(temporal)).toBe(`${raiz.repos}/.subidas`);
+    expect(destino).toBe(path.join(raiz.dir, "a.txt"));
+  });
+
+  it("no deja el temporal en la carpeta del Panel, haya ido bien o mal", async () => {
+    await subir({ nombre: "a.txt" }, "hola");
+    vi.mocked(moverAVolumen).mockRejectedValueOnce(new Error("docker"));
+    const res = await subir({ nombre: "b.txt" }, "hola");
+
+    expect(res.status).toBe(500);
+    expect(await readdir(`${raiz.repos}/.subidas`)).toEqual([]);
+  });
+
+  it("borrar lo hace el contenedor auxiliar", async () => {
+    const url = new URL("http://localhost/api/volumes/v1/files");
+    url.searchParams.set("path", "a.txt");
+    const res = await DELETE(
+      new NextRequest(url, { method: "DELETE" }),
+      params,
+    );
+
+    expect(res.status).toBe(204);
+    expect(borrarEnVolumen).toHaveBeenCalledWith(
+      raiz.dir,
+      path.join(raiz.dir, "a.txt"),
+    );
+  });
+
+  it("si el borrado falla responde 500", async () => {
+    vi.mocked(borrarEnVolumen).mockRejectedValueOnce(new Error("docker"));
+    const url = new URL("http://localhost/api/volumes/v1/files");
+    url.searchParams.set("path", "a.txt");
+
+    const res = await DELETE(
+      new NextRequest(url, { method: "DELETE" }),
+      params,
+    );
+
+    expect(res.status).toBe(500);
   });
 });

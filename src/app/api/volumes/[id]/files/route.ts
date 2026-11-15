@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
+import { lstat, mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -9,7 +9,9 @@ import { type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
 import {
+  borrarEnVolumen,
   MAX_SUBIDA_BYTES,
+  moverAVolumen,
   resolverRutaSinEnlaces,
   rutaHostVolumen,
 } from "@/lib/volumenes";
@@ -130,21 +132,24 @@ export async function POST(
       hecho(bytes > MAX_SUBIDA_BYTES ? new DemasiadoGrande() : null, trozo);
     },
   });
-  // Written aside and renamed: a failed upload must not truncate the file
-  // that was already there.
-  const temporal = `${destPath}.subiendo-${randomUUID()}`;
+  // Written to the Panel's own folder first, where it can write and count
+  // the size, and only then moved into the Volumen: a failed upload must not
+  // truncate the file that was already there.
+  const subidas = `${env.REPOS_DIR}/.subidas`;
+  const temporal = `${subidas}/${randomUUID()}`;
   try {
-    await mkdir(target, { recursive: true });
+    await mkdir(subidas, { recursive: true });
     await pipeline(
       Readable.fromWeb(req.body as WebReadableStream),
       limite,
       createWriteStream(temporal),
     );
-    await rename(temporal, destPath);
+    await moverAVolumen(base, temporal, destPath);
   } catch (err) {
-    await rm(temporal, { force: true });
     if (err instanceof DemasiadoGrande) return demasiadoGrande();
     return new Response(`No se pudo guardar ${nombre}`, { status: 500 });
+  } finally {
+    await rm(temporal, { force: true });
   }
 
   return Response.json({ nombre }, { status: 201 });
@@ -178,9 +183,9 @@ export async function DELETE(
   if (!target) return new Response("Invalid path", { status: 400 });
 
   try {
-    await rm(target, { recursive: true, force: true });
+    await borrarEnVolumen(base, target);
     return new Response(null, { status: 204 });
   } catch {
-    return new Response("Not Found", { status: 404 });
+    return new Response("No se pudo borrar", { status: 500 });
   }
 }
