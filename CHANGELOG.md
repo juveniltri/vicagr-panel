@@ -5,7 +5,7 @@ Novedades. Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES
 cada versión con su fecha, un resumen de una línea y los apartados Novedades,
 Correcciones y Seguridad.
 
-## [3.2.0] - 2026-11-15
+## [3.2.0] - 2026-11-16
 
 Secreto de webhook por Proyecto, CSP estricta, actualizaciones sin construir en la VPS y
 backups más fiables.
