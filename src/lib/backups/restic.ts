@@ -18,6 +18,24 @@ const CLAVE_INCORRECTA = 12;
 // silent minutes mean the destination went away mid-transfer.
 export const INACTIVIDAD_MS = 5 * 60 * 1000;
 
+// Every status line stays in memory until the command ends: one every 5 s
+// instead of every second, still well inside INACTIVIDAD_MS.
+const PROGRESO = { RESTIC_PROGRESS_FPS: "0.2" };
+
+// forget and prune print nothing while they work, so they get a plain time
+// limit instead: a hung destination would otherwise hold the backups lock
+// for good.
+export const LIMITE_RETENCION_MS = 30 * 60 * 1000;
+export const LIMITE_PODA_MS = 3 * 60 * 60 * 1000;
+
+function conLimite(r: Restic, ms: number): Restic {
+  const limite = AbortSignal.timeout(ms);
+  return {
+    ...r,
+    signal: r.signal ? AbortSignal.any([r.signal, limite]) : limite,
+  };
+}
+
 function restic(
   r: Restic,
   args: string[],
@@ -25,7 +43,7 @@ function restic(
   inactividadMs?: number,
 ): Promise<string> {
   return ejecutar("restic", [...r.args, ...args], {
-    env: r.env,
+    env: inactividadMs ? { ...r.env, ...PROGRESO } : r.env,
     signal: r.signal,
     ...(cwd ? { cwd } : {}),
     ...(inactividadMs ? { inactividadMs } : {}),
@@ -105,7 +123,7 @@ export async function crearSnapshot(
 }
 
 export async function aplicarRetencion(r: Restic): Promise<void> {
-  await restic(r, [
+  await restic(conLimite(r, LIMITE_RETENCION_MS), [
     "forget",
     "--json",
     "--tag",
@@ -215,13 +233,14 @@ export async function olvidar(
     ids?: string[];
   },
 ): Promise<void> {
+  const conTope = conLimite(r, LIMITE_RETENCION_MS);
   if (p.politica === "todo") {
     // Never by tag alone: the caller names exactly what goes.
     if (!p.ids?.length) return;
-    await restic(r, ["forget", "--json", ...p.ids]);
+    await restic(conTope, ["forget", "--json", ...p.ids]);
     return;
   }
-  await restic(r, [
+  await restic(conTope, [
     "forget",
     "--json",
     "--tag",
@@ -235,7 +254,7 @@ export async function olvidar(
 }
 
 export async function podar(r: Restic): Promise<void> {
-  await restic(r, ["prune"]);
+  await restic(conLimite(r, LIMITE_PODA_MS), ["prune"]);
 }
 
 export function volcarSnapshot(

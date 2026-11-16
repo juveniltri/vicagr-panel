@@ -12,7 +12,9 @@ const m = vi.hoisted(() => ({
   soltar: vi.fn(),
   error: vi.fn(),
   warn: vi.fn(),
+  notificar: vi.fn(),
 }));
+vi.mock("@/lib/notificaciones", () => ({ notificarFalloBackup: m.notificar }));
 vi.mock("@/lib/logger", () => ({
   logger: { child: () => ({ warn: m.warn, error: m.error }) },
 }));
@@ -33,12 +35,14 @@ vi.mock("./configuracion", () => ({
     fn: (r: { env: object; args: string[] }) => Promise<void>,
   ) => fn({ env: {}, args: [] }),
 }));
-vi.mock("./operacion", () => ({
+vi.mock("./operacion", async (original) => ({
+  ...(await original<typeof import("./operacion")>()),
   tomarOperacion: m.tomar,
   soltarOperacion: m.soltar,
 }));
 
 import { hashClave } from "./comandos";
+import { ErrorProceso } from "./procesos";
 import {
   aplicarRetencionProyectos,
   iniciarPurgaProyecto,
@@ -186,6 +190,62 @@ describe("aplicarRetencionProyectos", () => {
     expect(m.podar).not.toHaveBeenCalled();
   });
 
+  it("un forget que falla no impide los demás, y al final se informa", async () => {
+    m.listar.mockResolvedValue([
+      snap({ id: "a", proyectoId: "p1" }),
+      snap({ id: "b", proyectoId: "p2" }),
+      snap({ id: "z", proyectoId: "gone", fecha: dias(60) }),
+    ]);
+    m.findMany.mockResolvedValue([
+      { id: "p1", nombre: "web", cliente: { slug: "uno" } },
+      { id: "p2", nombre: "api", cliente: { slug: "uno" } },
+    ]);
+    m.detectar.mockResolvedValue({
+      valida: false,
+      elementos: [],
+      noCopiados: [],
+    });
+    m.olvidar
+      .mockRejectedValueOnce(
+        new ErrorProceso("restic terminó con código 1:\nlock", 1, ""),
+      )
+      .mockRejectedValueOnce("raro");
+
+    await expect(aplicarRetencionProyectos(r)).rejects.toThrow(
+      /incompleta \(2 de 3\):\nrestic.*\nlock\nraro/s,
+    );
+
+    expect(m.olvidar).toHaveBeenCalledTimes(3);
+    expect(m.olvidar).toHaveBeenLastCalledWith(r, {
+      etiquetas: [],
+      politica: "todo",
+      ids: ["z"],
+    });
+  });
+
+  // A dead or hung destination would make each of the remaining calls wait too.
+  it("una cancelación o un tiempo agotado paran la retención al momento", async () => {
+    m.listar.mockResolvedValue([
+      snap({ id: "a", proyectoId: "p1" }),
+      snap({ id: "b", proyectoId: "p2" }),
+    ]);
+    m.findMany.mockResolvedValue([
+      { id: "p1", nombre: "web", cliente: { slug: "uno" } },
+      { id: "p2", nombre: "api", cliente: { slug: "uno" } },
+    ]);
+    m.detectar.mockResolvedValue({
+      valida: false,
+      elementos: [],
+      noCopiados: [],
+    });
+    const cancelado = new ErrorProceso("restic cancelado", null, "");
+    cancelado.name = "AbortError";
+    m.olvidar.mockRejectedValueOnce(cancelado);
+
+    await expect(aplicarRetencionProyectos(r)).rejects.toBe(cancelado);
+    expect(m.olvidar).toHaveBeenCalledOnce();
+  });
+
   it("no purga elementos si la detección trae noCopiados", async () => {
     m.listar.mockResolvedValue([snap({ id: "a", fecha: dias(90) })]);
     m.findMany.mockResolvedValue([
@@ -237,7 +297,9 @@ describe("iniciarPurgaProyecto", () => {
     m.tomar.mockImplementation(() => {
       throw new Error("ocupado");
     });
-    await expect(iniciarPurgaProyecto("p1")).rejects.toThrow("ocupado");
+    await expect(iniciarPurgaProyecto("p1", "uno/web")).rejects.toThrow(
+      "ocupado",
+    );
     expect(m.listar).not.toHaveBeenCalled();
   });
 
@@ -246,7 +308,7 @@ describe("iniciarPurgaProyecto", () => {
     m.tomar.mockReturnValue(controlador);
     m.listar.mockResolvedValue([snap({ id: "a" }), snap({ id: "b" })]);
     m.config.mockResolvedValue({});
-    await iniciarPurgaProyecto("p1");
+    await iniciarPurgaProyecto("p1", "uno/web");
     await vi.waitFor(() => expect(m.soltar).toHaveBeenCalled());
     expect(m.olvidar).toHaveBeenCalledWith(expect.anything(), {
       etiquetas: [],
@@ -256,12 +318,18 @@ describe("iniciarPurgaProyecto", () => {
     expect(m.podar).toHaveBeenCalled();
   });
 
-  it("registra el fallo y suelta el bloqueo", async () => {
+  it("registra el fallo, avisa y suelta el bloqueo", async () => {
     m.tomar.mockReturnValue(new AbortController());
     m.config.mockRejectedValue(new Error("sin destino"));
-    await iniciarPurgaProyecto("p1");
+    await iniciarPurgaProyecto("p1", "uno/web");
     await vi.waitFor(() => expect(m.soltar).toHaveBeenCalled());
     expect(m.error).toHaveBeenCalled();
     expect(m.podar).not.toHaveBeenCalled();
+    expect(m.notificar).toHaveBeenCalledWith({
+      operacion: "borrado",
+      origen: "manual",
+      error: "sin destino\nSe borrarán solas a los 30 días.",
+      proyecto: "uno/web",
+    });
   });
 });

@@ -10,6 +10,10 @@ vi.mock("@/server/routers/proyectos", () => ({
   lanzarDeploy: vi.fn(),
 }));
 
+vi.mock("@/lib/crypto", () => ({
+  descifrar: vi.fn((valor: string) => valor),
+}));
+
 vi.mock("@/lib/backups/restaurando", () => ({
   estaRestaurando: vi.fn().mockReturnValue(false),
 }));
@@ -19,9 +23,11 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 import { prisma } from "@/lib/prisma";
+import { descifrar } from "@/lib/crypto";
 import { estaRestaurando } from "@/lib/backups/restaurando";
 import { lanzarDeploy } from "@/server/routers/proyectos";
 import { LIMITE_CUERPO } from "@/lib/github/webhook";
+import { TRPCError } from "@trpc/server";
 import { POST } from "./route";
 
 const proyectoCrm = {
@@ -177,6 +183,51 @@ describe("POST /api/webhooks/github", () => {
     expect(await res.json()).toEqual({ ok: true, deployed: ["p2"] });
     expect(lanzarDeploy).toHaveBeenCalledTimes(1);
     expect(lanzarDeploy).toHaveBeenCalledWith(otro, expect.anything());
+    // The skipped one leaves a trace too.
+    expect(avisos).toHaveBeenCalledWith(
+      { proyectos: ["p1"] },
+      "Push ignorado: los Proyectos se están restaurando",
+    );
+  });
+
+  // A restore marked between the check and the deploy: same answer as above,
+  // not a 500 that GitHub would show as a failed delivery.
+  it("si la restauración empieza a la vez, 409 y no 500", async () => {
+    vi.mocked(lanzarDeploy).mockRejectedValueOnce(
+      new TRPCError({ code: "CONFLICT", message: "restaurando" }),
+    );
+
+    const res = await POST(peticion(JSON.stringify(pushPayload)));
+
+    expect(res.status).toBe(409);
+    expect(avisos).toHaveBeenCalledWith(
+      { proyectos: ["p1"] },
+      "Push ignorado: la restauración empezó a la vez",
+    );
+  });
+
+  it("con varios Proyectos, despliega los demás aunque uno choque con una restauración", async () => {
+    const otro = { ...proyectoCrm, id: "p2" };
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([
+      proyectoCrm,
+      otro,
+    ] as never);
+    vi.mocked(lanzarDeploy)
+      .mockRejectedValueOnce(new TRPCError({ code: "CONFLICT", message: "x" }))
+      .mockResolvedValueOnce({} as never);
+
+    const res = await POST(peticion(JSON.stringify(pushPayload)));
+
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ ok: true, deployed: ["p2"] });
+  });
+
+  it("cualquier otro error al lanzar el deploy sigue siendo un error", async () => {
+    vi.mocked(lanzarDeploy).mockRejectedValueOnce(new Error("BD caída"));
+
+    await expect(POST(peticion(JSON.stringify(pushPayload)))).rejects.toThrow(
+      "BD caída",
+    );
   });
 
   // The commit ends up as an argument to `git checkout`.
@@ -196,6 +247,84 @@ describe("POST /api/webhooks/github", () => {
       expect(lanzarDeploy).not.toHaveBeenCalled();
     },
   );
+
+  describe("con secreto propio del Proyecto", () => {
+    const propio = {
+      ...proyectoCrm,
+      id: "p2",
+      secretoWebhookCifrado: "propio",
+      secretoWebhookIv: "iv",
+      secretoWebhookAuthTag: "tag",
+    };
+
+    beforeEach(() => {
+      // The lookup by secret selects fields; the candidates one includes relations.
+      vi.mocked(prisma.proyecto.findMany).mockImplementation(((args: {
+        select?: unknown;
+      }) =>
+        Promise.resolve(
+          args.select ? [propio] : [proyectoCrm, propio],
+        )) as never);
+    });
+
+    it("el secreto global ya no despliega ese Proyecto, sí los demás", async () => {
+      const res = await POST(peticion(JSON.stringify(pushPayload)));
+
+      expect(await res.json()).toEqual({ ok: true, deployed: ["p1"] });
+      expect(lanzarDeploy).toHaveBeenCalledTimes(1);
+    });
+
+    it("su secreto despliega solo ese Proyecto", async () => {
+      const res = await POST(
+        peticion(JSON.stringify(pushPayload), { secret: "propio" }),
+      );
+
+      expect(res.status).toBe(202);
+      expect(await res.json()).toEqual({ ok: true, deployed: ["p2"] });
+      expect(descifrar).toHaveBeenCalledWith("propio", "iv", "tag");
+    });
+
+    it("su secreto no vale para un push de otro repositorio", async () => {
+      const res = await POST(
+        peticion(
+          JSON.stringify({
+            ...pushPayload,
+            repository: { clone_url: "https://github.com/otro/repo.git" },
+          }),
+          { secret: "propio" },
+        ),
+      );
+
+      expect(res.status).toBe(401);
+      expect(lanzarDeploy).not.toHaveBeenCalled();
+    });
+
+    it("responde al ping firmado con su secreto", async () => {
+      const res = await POST(
+        peticion(JSON.stringify({ repository: pushPayload.repository }), {
+          event: "ping",
+          secret: "propio",
+        }),
+      );
+
+      expect(await res.json()).toMatchObject({ pong: true });
+    });
+
+    it("sin firma válida de nadie sigue siendo 401", async () => {
+      const res = await POST(
+        peticion(JSON.stringify(pushPayload), { secret: "otro" }),
+      );
+
+      expect(res.status).toBe(401);
+    });
+
+    it("un cuerpo que no es JSON y no firma el global es 401", async () => {
+      const res = await POST(peticion("no es json", { secret: "propio" }));
+
+      expect(res.status).toBe(401);
+      expect(prisma.proyecto.findMany).not.toHaveBeenCalled();
+    });
+  });
 
   it("rechaza con 413 un cuerpo mayor que el máximo sin procesarlo", async () => {
     const enorme = JSON.stringify({ ...pushPayload, relleno: "x".repeat(200) });

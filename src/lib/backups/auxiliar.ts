@@ -11,9 +11,14 @@ export function nombreAuxiliar(backupId: string, clave: string): string {
 
 // Killing the docker CLI does not stop the container it started, so aborted
 // copies remove the auxiliary container by name.
+// A hung Docker daemon must not hold the copy (and its lock) forever.
+export const LIMITE_ELIMINAR_MS = 60_000;
+
 export async function eliminarAuxiliar(nombre: string): Promise<void> {
   try {
-    await ejecutar("docker", ["rm", "-f", nombre], {});
+    await ejecutar("docker", ["rm", "-f", nombre], {
+      signal: AbortSignal.timeout(LIMITE_ELIMINAR_MS),
+    });
   } catch (err) {
     const texto =
       err instanceof ErrorProceso ? `${err.message}\n${err.salida}` : "";

@@ -163,7 +163,7 @@ NOTE:  contexto que sorprendería a un futuro lector
 - Variables sensibles: nunca en `NEXT_PUBLIC_*`
 - CSRF: tokens en todas las operaciones que muten estado
 - Headers HTTP obligatorios: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`
-- CSP: definida y activa en producción
+- CSP: definida y activa en producción, en `src/proxy.ts` (no en `next.config.ts`) con un nonce por petición: `script-src 'self' 'nonce-…'`, sin `unsafe-*`. Todo script inline necesita `nonce` (el layout lo lee de `x-nonce`); por eso todas las páginas son dinámicas. `style-src` sigue con `'unsafe-inline'` (atributos `style` de Monaco y React)
 - TLS: mínimo TLS 1.2 — Traefik gestiona la negociación
 - Webhook secret de GitHub: validar HMAC-SHA256 en cada petición entrante
 - Sesión: JWT de 7 días validado contra la BD en cada `auth()` (`sesionVigente`, `src/lib/sesion.ts`): un usuario eliminado o con la contraseña cambiada (`User.sesionesDesde`) pierde la sesión al momento
@@ -191,7 +191,6 @@ npm run build            # build de producción
 npm run lint             # eslint
 npm run type-check       # tsc --noEmit
 npm run test:unit        # vitest (unitarios)
-npm run test:integration # vitest (integración)
 npm run test:e2e         # playwright
 npm run db:migrate       # ejecutar migraciones pendientes
 npm run db:seed          # poblar con datos de desarrollo
@@ -233,9 +232,14 @@ problemas frecuentes (§ E). Resumen:
 
 ```bash
 git clone <repo> /opt/vicagr-panel && cd /opt/vicagr-panel
-cp .env.production.example .env   # rellenar
-docker compose up -d --build      # también al actualizar: el stack completo, tras git pull
+cp .env.production.example .env   # rellenar, con PANEL_VERSION=X.Y.Z
+docker login ghcr.io              # una vez, token read:packages
+git checkout vX.Y.Z && docker compose pull panel && docker compose up -d   # también al actualizar
 ```
+
+`release.yml` publica la imagen `ghcr.io/juveniltri/vicagr-panel:X.Y.Z` (y `latest`) al subir el
+tag, antes de crear la Release. Sin `PANEL_VERSION` el compose usa el tag `local` y
+`up -d --build` la construye en la VPS (así lo hacen la e2e y `npm run guia`).
 
 Al publicar una versión con pasos manuales, añadirlos en `production.md` § B además del
 `### Al actualizar` del CHANGELOG.
@@ -296,7 +300,10 @@ reconstruye desde el commit, así que no las necesita.
 ### Nota — webhook de GitHub
 
 Endpoint `POST /api/webhooks/github`, content type `application/json` (también acepta form-urlencoded),
-secret = `GITHUB_WEBHOOK_SECRET`, evento push. La URL del repo se compara normalizada (con/sin `.git`,
+secret = `GITHUB_WEBHOOK_SECRET` o el propio del Proyecto (`secretoWebhookCifrado`, generado en su
+ficha y mostrado una vez), evento push. Un Proyecto con secreto propio solo se despliega con él;
+si el global no firma, la ruta prueba los secretos de los Proyectos del repo. Los tres campos van
+en el `omit` global de `src/lib/prisma.ts` (para leerlos: `select` u `omit: { …: false }`). La URL del repo se compara normalizada (con/sin `.git`,
 https/ssh), responde `202` y despliega en segundo plano el sha exacto del push. Al crear el webhook
 GitHub envía un `ping`: si en _Recent Deliveries_ no aparece nada, GitHub no ha llamado al panel.
 
@@ -445,12 +452,13 @@ Ver `CONTEXT.md` para el glosario completo.
     (1586 tests). Pendiente en la VPS de desarrollo: verificar los backups de Proyectos (`production.md` § B2b) y certificados reales con Cloudflare.
   - Versión 2.5.0 (`release/2.5.0`): login con Pocket ID (OIDC opcional, `User.oidcSub` vinculado a mano, sesión de 12 h, guía en `production.md` § F) y fuentes locales. Probado en real: Pocket ID en la VPS de producción y login en el Panel de desarrollo. Pendiente: conectar el Panel de producción y restaurar un backup de Pocket ID.
   - Versión 3.0.0 (`release/3.0.0`): renombrado `vicalba` → `vicagr` en todo (`/var/vicagr`, red `vicagr-net`, contenedores `vicagr-db`/`vicagr-panel`, BD y usuario `vicagr`, proyecto de compose `vicagr`, host de restic). Exige migrar cada VPS con `production.md` § B1a; probado en la VPS de desarrollo. Las cabeceras antiguas `# generado por vicalba-panel` de Traefik se siguen reconociendo (HACK en `src/lib/traefik/config.ts`, quitar en la release siguiente). Pendiente: migrar producción, `restic rewrite --new-host` de las copias antiguas y renombrar el repositorio en GitHub.
-- **En construcción:** versión 3.1.0 (`feature/3.1.0`, desde `develop`; todo el trabajo de la auditoría del 14/11/2026, issues #87–#114, va a esta rama hasta llevarla a `develop`). Detalle para usuarios en `CHANGELOG.md` y pasos en `production.md` § B1b.
-  - Vigilancia (`src/lib/vigilancia.ts`, cada minuto desde `src/instrumentation.ts`): el Estado sigue a Docker (un Servicio con salida distinta de 0/143/137, en bucle de reinicios o `unhealthy` pasa el Proyecto a `error` a la segunda lectura), avisos «Proyecto caído/recuperado» y «Disco casi lleno» (85 %, se recupera al bajar del 80 %) por los canales de notificación, y latido a `LATIDO_URL` (healthchecks.io) solo con `/api/health` en verde
-  - Deploy: espera a que los contenedores sigan en marcha y estén sanos (`TIEMPOS_SALUD`); sin `--force-recreate`; composes generados con `restart: unless-stopped`, `mem_limit`/`cpus` por Proyecto (`limiteMemoriaMb`/`limiteCpus`, 1 GB y 1 CPU) y `no-new-privileges`; Node.js como usuario `node` con healthcheck de puerto (`nc`) y entrega de los Volúmenes al uid 1000; Volúmenes vacíos sembrados desde el contenedor o la imagen; `git init` + fetch en vez de `git clone`; dockerignore con `volumes`; known_hosts en `REPOS_DIR/.git-known_hosts`
-  - Variables: `.env` entrecomillado para Compose (`valorEnvCompose`), `.env.local` para dotenv (`valorEnvApp`), `$` como `$$` en YAML; compose pegado con `<proyecto>.env` propio (`apuntarEnvFile`)
-  - Seguridad: gestor de ficheros sin enlaces simbólicos (`resolverRutaSinEnlaces`) y en streaming (máx. 2 GB); cookie de sesión `SameSite=Strict` y límite por cuenta; con Pocket ID la contraseña solo vale sin `X-Real-Ip` (túnel SSH, `passwordPermitida`); webhook con sha de 40 hex y cuerpo máx. 25 MB; `/api/health` sin sesión solo da el estado; nombres `<cliente>-<proyecto>` únicos
-  - Además: eliminar un Proyecto borra sus contenedores y ficheros (datos solo con casilla), plantillas WordPress y Next.js al crear, imagen del Panel con `npm ci` y sin dependencias de dev
-  - Aplazados: #109 (secreto de webhook por Proyecto) y #112 (imagen del Panel desde la CI). Sin hacer: guía de usuario y capturas
-- **Bloqueado / pendiente:** ver `docs/roadmap.md`
-- **Próximo hito:** probar la 3.1.0 en la VPS de desarrollo y publicarla; verificar la 2.4.0 y la 2.5.0 en las VPS; después E2E, CSP estricta y cobertura (ver `docs/roadmap.md`)
+  - Versión 3.1.0 (publicada el 15/11/2026, PR #116; auditoría del 14/11/2026, issues #87–#114). Detalle para usuarios en `CHANGELOG.md`, pasos en `production.md` § B1b y lo que queda por verificar y desplegar en #117. Probada en la VPS de desarrollo.
+    - Vigilancia (`src/lib/vigilancia.ts`, cada minuto desde `src/instrumentation.ts`): el Estado sigue a Docker (un Servicio con salida distinta de 0/143/137, en bucle de reinicios o `unhealthy` pasa el Proyecto a `error` a la segunda lectura), avisos «Proyecto caído/recuperado» y «Disco casi lleno» (85 %, se recupera al bajar del 80 %) por los canales de notificación, y latido a `LATIDO_URL` (healthchecks.io) solo con `/api/health` en verde
+    - Deploy: espera a que los contenedores sigan en marcha y estén sanos (`TIEMPOS_SALUD`); sin `--force-recreate`; composes generados con `restart: unless-stopped`, `mem_limit`/`cpus` por Proyecto (`limiteMemoriaMb`/`limiteCpus`, 1 GB y 1 CPU) y `no-new-privileges`; Node.js como usuario `node` con healthcheck de puerto (`nc`) y entrega de los Volúmenes al uid 1000; Volúmenes vacíos sembrados desde el contenedor o la imagen; `git init` + fetch en vez de `git clone`; dockerignore con `volumes`; known_hosts en `REPOS_DIR/.git-known_hosts`
+    - Variables: `.env` entrecomillado para Compose (`valorEnvCompose`), `.env.local` para dotenv (`valorEnvApp`), `$` como `$$` en YAML; compose pegado con `<proyecto>.env` propio (`apuntarEnvFile`)
+    - Seguridad: gestor de ficheros sin enlaces simbólicos (`resolverRutaSinEnlaces`; con `volumenSinEnlaces` también la carpeta del Volumen desde `REPOS_DIR`, que el deploy comprueba antes de montarla) y en streaming (máx. 2 GB), escribiendo con un contenedor auxiliar como root sin red (`moverAVolumen`, `crearCarpetaEnVolumen`, `borrarEnVolumen`) con el propietario de la carpeta; cookie de sesión `SameSite=Strict` y límite por cuenta; con Pocket ID la contraseña solo vale sin `X-Real-Ip` (túnel SSH, `passwordPermitida`); webhook con sha de 40 hex y cuerpo máx. 25 MB; `/api/health` sin sesión solo da el estado; nombres `<cliente>-<proyecto>` únicos
+    - Además: eliminar un Proyecto borra sus contenedores y ficheros (datos solo con casilla), plantillas WordPress y Next.js al crear, imagen del Panel con `npm ci` y sin dependencias de dev, suite E2E con Playwright (`npm run test:e2e`)
+    - Aplazados: #109 (secreto de webhook por Proyecto) y #112 (imagen del Panel desde la CI). Sin hacer: guía de usuario y capturas
+- **En construcción:** —
+- **Bloqueado / pendiente:** ver `docs/roadmap.md` y #117
+- **Próximo hito:** desplegar la 3.1.0 en producción (#117); verificar la 2.4.0 y la 2.5.0 en las VPS; después #109, #112, CSP estricta y cobertura (ver `docs/roadmap.md`)

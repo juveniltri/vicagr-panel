@@ -23,6 +23,14 @@ describe("apuntarEnvFile", () => {
     expect(apuntarEnvFile(content, "web.env")).toBe(content);
   });
 
+  it("deja intacto un env_file vacío", () => {
+    for (const content of [
+      "services:\n  web:\n    env_file:\n    image: nginx\n",
+      "services:\n  web: {env_file, image: nginx}\n",
+    ])
+      expect(apuntarEnvFile(content, "web.env")).toBe(content);
+  });
+
   it("deja intacto un compose inválido", () => {
     const content = "services:\n  web: [\n    env_file: .env\n";
     expect(apuntarEnvFile(content, "web.env")).toBe(content);
@@ -94,6 +102,12 @@ services:
 
   it("identifica el servicio que declara expose con el puerto", () => {
     expect(encontrarServicioPorPuerto(stackDjango, 8000)).toBe("web");
+  });
+
+  it("ignora un puerto que no es un número (variable sin sustituir)", () => {
+    const content =
+      'services:\n  web:\n    ports:\n      - "${PUERTO}"\n  api:\n    expose:\n      - "8000/tcp"\n';
+    expect(encontrarServicioPorPuerto(content, 8000)).toBe("api");
   });
 
   it("no confunde servicios sin expose/ports aunque compartan imagen", () => {

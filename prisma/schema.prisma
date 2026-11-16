@@ -80,6 +80,10 @@ model Proyecto {
   // Applied to the composes the Panel generates; a compose Proyecto sets its own.
   limiteMemoriaMb      Int               @default(1024)
   limiteCpus           Float             @default(1)
+  // Without one, GITHUB_WEBHOOK_SECRET signs its pushes.
+  secretoWebhookCifrado String?
+  secretoWebhookIv      String?
+  secretoWebhookAuthTag String?
   elementosBackup      ElementoBackup[]
   variables            VariableEntorno[]
   deploys              Deploy[]

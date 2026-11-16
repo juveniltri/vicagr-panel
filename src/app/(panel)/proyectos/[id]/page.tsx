@@ -32,6 +32,7 @@ import { VisorLogs } from "@/components/dashboard/LogsModal";
 import { DeployLogsPanel } from "@/components/dashboard/DeployLogsPanel";
 import { ComposeEditor } from "@/components/dashboard/ComposeEditor";
 import { ProjectActionButton } from "@/components/dashboard/ProjectActionButton";
+import { SecretoWebhook } from "@/components/dashboard/SecretoWebhook";
 import { RESULTADO_DEPLOY } from "@/components/dashboard/DeploysRecientes";
 import {
   BotonFijar,
@@ -73,9 +74,13 @@ async function cargarBackups(
     error: e instanceof Error ? e.message : String(e),
   });
   const [config, estado] = await Promise.all([
-    api.backups.obtenerConfiguracion(),
+    // Its failure belongs in the Backups tab, not as an error page for the
+    // whole Proyecto.
+    api.backups.obtenerConfiguracion().catch(mensaje),
     api.backups.elementosProyecto({ proyectoId }).catch(mensaje),
   ]);
+  if ("error" in config)
+    return { destinoConfigurado: false, estado: config, copias: null };
   const destinoConfigurado = config.tipoDestino !== null;
   const copias = destinoConfigurado
     ? await api.backups.copiasProyecto({ proyectoId }).catch(mensaje)
@@ -446,6 +451,12 @@ export default async function DetalleProyectoPage({
                   />
                 </button>
               </form>
+              {proyecto.repositorioUrl && (
+                <SecretoWebhook
+                  proyectoId={id}
+                  propio={proyecto.secretoWebhookPropio}
+                />
+              )}
             </Card>
 
             <Card

@@ -37,6 +37,8 @@ export type Deteccion = {
   valida: boolean;
   elementos: Elemento[];
   noCopiados: NoCopiado[];
+  // Docker could not be asked: not the same as a Proyecto without containers.
+  error?: string;
 };
 
 type Contexto = {
@@ -285,6 +287,6 @@ export async function detectarProyecto(
       { err, clienteSlug, proyectoNombre },
       "No se pudieron detectar los elementos del Proyecto",
     );
-    return SIN_DETECTAR;
+    return { ...SIN_DETECTAR, error: "No se pudo consultar Docker" };
   }
 }

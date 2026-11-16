@@ -207,8 +207,8 @@ function destinoDe(p: Proceso): string {
   return "?";
 }
 
-const terminado = () =>
-  vi.waitFor(() => expect(hayOperacionEnCurso()).toBe(false));
+const terminado = (timeout = 1000) =>
+  vi.waitFor(() => expect(hayOperacionEnCurso()).toBe(false), { timeout });
 
 const peticion = (claves: string[], copiaId = "c1") => ({
   proyectoId: "p1",
@@ -608,6 +608,24 @@ describe("iniciarRestauracionProyecto — fallos", () => {
     expect(estaRestaurando("p1")).toBe(false);
   });
 
+  it("si no se puede cerrar la copia previa, la restauración se cierra igualmente en error", async () => {
+    m.update.mockImplementation(
+      async ({ where }: { where: { id: string } }) => {
+        if (where.id === "previa") throw new Error("BD caída");
+        return {};
+      },
+    );
+    await iniciarRestauracionProyecto(peticion(["datos:./data"]));
+    await terminado();
+    expect(m.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "rest" },
+        data: expect.objectContaining({ resultado: "error" }),
+      }),
+    );
+    expect(m.notificar).toHaveBeenCalled();
+  });
+
   it("falla tras tocar datos → el Proyecto pasa a stopped en la BD; si eso falla, solo se registra", async () => {
     m.encadenar.mockImplementation(async (origen: Proceso) => {
       if (origen.args[3] === "s-app")
@@ -892,6 +910,30 @@ ${AVISO}`,
     });
   });
 
+  it("tras arrancar, un fallo pasajero al registrar el éxito se reintenta sin avisar", async () => {
+    let fallos = 0;
+    m.update.mockImplementation(
+      async ({ data }: { data: { resultado: string } }) => {
+        if (
+          data.resultado === "exito" &&
+          m.update.mock.calls.length > 1 &&
+          fallos++ === 0
+        )
+          throw new Error("BD caída un momento");
+        return {};
+      },
+    );
+    await iniciarRestauracionProyecto(peticion(["bd:db"]));
+    await terminado();
+    expect(m.notificar).not.toHaveBeenCalled();
+    expect(m.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { id: "rest" },
+        data: expect.objectContaining({ resultado: "exito" }),
+      }),
+    );
+  });
+
   it("tras arrancar, no poder registrar el éxito no para nada: error en el log y aviso", async () => {
     m.update.mockImplementation(
       async ({ data }: { data: { resultado: string } }) => {
@@ -901,7 +943,8 @@ ${AVISO}`,
       },
     );
     await iniciarRestauracionProyecto(peticion(["bd:db"]));
-    await terminado();
+    // Every retry of the registration waits before the next.
+    await terminado(5_000);
     expect(llamadas).not.toContain("detener:todos");
     expect(m.error).toHaveBeenCalled();
     expect(m.notificar).toHaveBeenCalledWith(

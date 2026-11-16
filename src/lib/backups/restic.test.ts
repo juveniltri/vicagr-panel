@@ -25,6 +25,8 @@ import {
   resumirErrorRestic,
   restaurarSnapshot,
   INACTIVIDAD_MS,
+  LIMITE_PODA_MS,
+  LIMITE_RETENCION_MS,
   type Restic,
 } from "./restic";
 
@@ -151,12 +153,46 @@ describe("comandos", () => {
         ".",
       ],
       {
-        env: r.env,
+        // A status line every 5 s instead of every second: they all stay in
+        // memory until restic ends.
+        env: { ...r.env, RESTIC_PROGRESS_FPS: "0.2" },
         cwd: "/tmp/copia",
         signal: undefined,
         inactividadMs: INACTIVIDAD_MS,
       },
     );
+  });
+
+  // forget and prune print nothing while they work: without a limit a hung
+  // destination would keep the backups lock.
+  it.each([
+    ["aplicarRetencion", () => aplicarRetencion(r), LIMITE_RETENCION_MS],
+    [
+      "olvidar",
+      () => olvidar(r, { etiquetas: ["proyecto"], politica: "30d" }),
+      LIMITE_RETENCION_MS,
+    ],
+    ["podar", () => podar(r), LIMITE_PODA_MS],
+  ])("%s tiene un tiempo máximo", async (_, llamar, limite) => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    mockEjecutar.mockResolvedValueOnce("[]");
+    await llamar();
+    expect(timeout).toHaveBeenCalledWith(limite);
+    expect(mockEjecutar.mock.calls[0]![2]).toMatchObject({
+      signal: timeout.mock.results[0]!.value,
+    });
+    timeout.mockRestore();
+  });
+
+  it("el tiempo máximo respeta también la cancelación de fuera", async () => {
+    const fuera = new AbortController();
+    mockEjecutar.mockResolvedValueOnce("");
+    await podar({ ...r, signal: fuera.signal });
+    const { signal } = mockEjecutar.mock.calls[0]![2] as {
+      signal: AbortSignal;
+    };
+    fuera.abort();
+    expect(signal.aborted).toBe(true);
   });
 
   it("aplicarRetencion: 7 diarias y 4 semanales por etiqueta", async () => {

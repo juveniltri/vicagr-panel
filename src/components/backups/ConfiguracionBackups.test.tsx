@@ -49,6 +49,7 @@ const lista: ConfiguracionBackupVista = {
   claveConfirmada: true,
   repositorioInicializado: true,
   proximaCopia: new Date("2026-10-15T01:00:00Z"),
+  ultimoCiclo: null,
   enCurso: false,
 };
 
@@ -122,6 +123,44 @@ describe("ConfiguracionBackups", () => {
     expect(screen.getByText("Última copia").nextSibling).toHaveTextContent(
       "falló: 403 Forbidden",
     );
+  });
+
+  // The whole night at a glance: did the Panel and every Proyecto make it?
+  it("resume el último ciclo diario y nombra los Proyectos que fallaron", () => {
+    renderizar({
+      ...lista,
+      ultimoCiclo: {
+        iniciadoEn: new Date("2026-10-14T01:00:00Z"),
+        panel: "exito",
+        proyectos: [
+          { nombre: "acme/web", resultado: "exito" },
+          { nombre: "acme/crm", resultado: "error" },
+        ],
+      },
+    });
+    const ciclo = screen.getByText("Último ciclo diario").nextSibling;
+    expect(ciclo).toHaveTextContent("Panel correcta");
+    expect(ciclo).toHaveTextContent("Proyectos: 1 de 2 correctas");
+    expect(ciclo).toHaveTextContent("con error: acme/crm");
+  });
+
+  it("un ciclo sin Proyectos solo habla del Panel", () => {
+    renderizar({
+      ...lista,
+      ultimoCiclo: {
+        iniciadoEn: new Date("2026-10-14T01:00:00Z"),
+        panel: "error",
+        proyectos: [],
+      },
+    });
+    const ciclo = screen.getByText("Último ciclo diario").nextSibling;
+    expect(ciclo).toHaveTextContent("Panel con error");
+    expect(ciclo).not.toHaveTextContent("Proyectos");
+  });
+
+  it("sin ciclos todavía no muestra el resumen", () => {
+    renderizar();
+    expect(screen.queryByText("Último ciclo diario")).not.toBeInTheDocument();
   });
 
   it("sin copias ni programación lo indica", () => {

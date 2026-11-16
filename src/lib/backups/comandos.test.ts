@@ -16,6 +16,7 @@ import {
   procesoRestaurarRolesPg,
   procesoRolesPg,
   procesoTarDatos,
+  sinValoresDeFilas,
 } from "./comandos";
 
 const script = (p: { args: string[] }) => p.args[p.args.length - 1];
@@ -156,10 +157,12 @@ describe("MySQL/MariaDB", () => {
 });
 
 describe("datos", () => {
-  it("copia en solo lectura", () => {
+  it("copia en solo lectura y sin red", () => {
     expect(procesoTarDatos("aux", "/srv/data").args).toEqual([
       "run",
       "--rm",
+      "--network",
+      "none",
       "--name",
       "aux",
       "-v",
@@ -178,6 +181,7 @@ describe("datos", () => {
   it("extrae vaciando antes, en lectura y escritura", () => {
     const p = procesoExtraerDatos("aux", "crm_media");
     expect(p.args).toContain("-i");
+    expect(p.args.join(" ")).toContain("--network none");
     expect(p.args).toContain("crm_media:/datos");
     expect(script(p)).toBe(
       "find /datos -mindepth 1 -delete && tar --numeric-owner -xf - -C /datos",
@@ -286,6 +290,8 @@ CREATE ROLE "Postgres";
 ALTER ROLE "Postgres" WITH SUPERUSER LOGIN PASSWORD 'SCRAM-SHA-256$4096:ghi';
 COMMENT ON ROLE postgres IS 'it''s; the admin';
 COMMENT ON ROLE crm_traza IS 'audit';
+SECURITY LABEL FOR selinux ON ROLE postgres IS 'system_u:object_r:sepgsql_t:s0';
+SECURITY LABEL ON ROLE crm_traza IS 'etiqueta';
 
 --
 -- User Configurations
@@ -312,11 +318,41 @@ GRANT pg_read_all_data TO crm_traza GRANTED BY postgres;
 --
 `;
 
+describe("sinValoresDeFilas", () => {
+  it("quita las líneas y trozos de psql y mysql que citan valores de filas", () => {
+    const error = [
+      "psql terminó con código 3:",
+      'psql:<stdin>:42: ERROR:  duplicate key value violates unique constraint "users_email_key"',
+      "DETAIL:  Key (email)=(ana@cliente.es) already exists.",
+      'CONTEXT:  COPY users, line 7: "7\tana@cliente.es\tAna"',
+      "LINE 1: INSERT INTO users VALUES (7, 'ana@cliente.es');",
+      'ERROR:  invalid input syntax for type integer: "ana@cliente.es"',
+      "ERROR 1062 (23000) at line 9: Duplicate entry 'ana@cliente.es' for key 'email'",
+      "ERROR 1366 (HY000): Incorrect integer value: 'ana' for column 'id' at row 1",
+    ].join("\n");
+
+    const limpio = sinValoresDeFilas(error);
+
+    expect(limpio).not.toContain("ana");
+    expect(limpio).toContain('violates unique constraint "users_email_key"');
+    expect(limpio).toContain("Duplicate entry '…' for key 'email'");
+    expect(limpio).toContain('invalid input syntax for type integer: "…"');
+    expect(limpio).toContain("Incorrect integer value: '…'");
+  });
+
+  it("deja igual un error sin valores", () => {
+    const error = "restic terminó con código 1:\nFatal: unable to open config";
+    expect(sinValoresDeFilas(error)).toBe(error);
+  });
+});
+
 describe("filtrarRolesSql", () => {
   it("quita todas las sentencias del rol y conserva las demás", () => {
     const r = filtrarRolesSql(GLOBALS, "postgres");
     expect(r).not.toMatch(/^(CREATE|ALTER) ROLE postgres/m);
     expect(r).not.toContain("COMMENT ON ROLE postgres");
+    expect(r).not.toContain("ON ROLE postgres IS 'system_u");
+    expect(r).toContain("SECURITY LABEL ON ROLE crm_traza IS 'etiqueta';");
     expect(r).not.toContain("SCRAM-SHA-256$4096:def");
     expect(r).not.toContain("ALTER ROLE postgres SET");
     expect(r).not.toContain("IN DATABASE crm SET work_mem TO '8MB'");

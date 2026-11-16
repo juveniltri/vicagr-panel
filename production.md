@@ -119,6 +119,8 @@ ACME_EMAIL=tu@email.com
 GITHUB_WEBHOOK_SECRET=<openssl hex>
 ENCRYPTION_KEY=<64 caracteres hex>
 DOCKER_GID=<getent>
+# Versión del Panel publicada en GHCR (§ A8); vacía = se construye en la VPS
+PANEL_VERSION=3.2.0
 # Opcional: errores del servidor a Sentry
 SENTRY_DSN=
 ```
@@ -129,9 +131,21 @@ SENTRY_DSN=
 
 ### A8. Arrancar
 
+Cada versión publica la imagen del Panel en GitHub Container Registry
+(`ghcr.io/juveniltri/vicagr-panel:<versión>`, privada), así que la VPS no la construye. Una sola
+vez por VPS, inicia sesión en el registro con un token de solo lectura: en GitHub, **Settings →
+Developer settings → Personal access tokens → Tokens (classic)**, con solo el permiso
+`read:packages` y sin caducidad (o apunta cuándo caduca).
+
 ```bash
-docker compose up -d --build
+docker login ghcr.io -u <usuario de GitHub>     # pega el token como contraseña
+git checkout v3.2.0                              # el mismo tag que PANEL_VERSION
+docker compose pull panel
+docker compose up -d
 ```
+
+Sin acceso al registro (o con `PANEL_VERSION` vacía), la VPS la construye como antes:
+`docker compose up -d --build`.
 
 Orden: PostgreSQL → Panel (migraciones al arrancar) y Traefik. Al primer arranque el Panel
 escribe `traefik/static/traefik.yml` y reinicia Traefik; en el log del Panel aparece «Faltaba el
@@ -228,13 +242,18 @@ Haz la prueba de § D una vez, para tenerla comprobada antes de necesitarla.
    docker compose exec -T db pg_dump -U vicagr -Fc vicagr > ~/vicagr-$(date +%F).dump
    ```
 
-3. Actualiza el código y levanta el **stack completo** (solo reconstruye lo que cambia):
+3. Pon en el `.env` la versión nueva (`PANEL_VERSION=X.Y.Z`), pasa el código al mismo tag y
+   levanta el **stack completo** con la imagen publicada:
 
    ```bash
    git fetch --tags
-   git checkout master && git pull
-   docker compose up -d --build
+   git checkout vX.Y.Z
+   docker compose pull panel
+   docker compose up -d
    ```
+
+   El `pull` descarga la imagen sin tocar el Panel en marcha: si falla, no ha cambiado nada.
+   Sin registro (`PANEL_VERSION` vacía): `git checkout master && git pull && docker compose up -d --build`.
 
 4. Comprueba: `docker compose ps`, `curl https://panel.tudominio.com/api/health` y que los
    dominios de los Proyectos abren. En el Panel, **Novedades** muestra la versión nueva.
@@ -245,18 +264,35 @@ Haz la prueba de § D una vez, para tenerla comprobada antes de necesitarla.
 ### B2. Volver atrás si algo sale mal
 
 Las migraciones no se deshacen solas: hay que restaurar la copia de B1.2 con el Panel parado y
-arrancar después la versión anterior (por ejemplo `v2.2.0`):
+arrancar después la versión anterior (por ejemplo `3.2.0`). Pon `PANEL_VERSION=3.2.0` en el `.env` y:
 
 ```bash
 cd /opt/vicagr-panel
 docker compose stop panel
 docker compose exec -T db pg_restore -U vicagr -d vicagr --clean --if-exists < ~/vicagr-<fecha>.dump
-git checkout v2.2.0
-docker compose up -d --build
+git checkout v3.2.0
+docker compose pull panel     # suele estar ya en la VPS: es la que corría antes
+docker compose up -d
 ```
+
+Las versiones anteriores a la 3.2.0 no tienen imagen publicada: para volver a una de ellas, deja
+`PANEL_VERSION` vacía y usa `docker compose up -d --build`.
 
 Los Proyectos redesplegados con la versión nueva siguen funcionando; vuelve a desplegarlos si
 algo de su configuración depende de la versión anterior.
+
+### B1c. A la 3.2.0 (imagen publicada, CSP estricta y secreto de webhook por Proyecto)
+
+Hay una migración (se aplica sola al arrancar) y una variable nueva. Desde esta versión la VPS
+descarga la imagen en vez de construirla:
+
+1. Una sola vez: `docker login ghcr.io` con un token `read:packages` (§ A8).
+2. Añade `PANEL_VERSION=3.2.0` al `.env`.
+3. § B1 a partir del paso 2.
+
+Tras la primera publicación, comprueba en GitHub (**Packages → vicagr-panel → Package
+settings**) que la visibilidad es **Private**. Si el `docker login` o el `pull` fallan, la
+actualización de siempre sigue valiendo (`PANEL_VERSION` vacía y `up -d --build`).
 
 ### B1b. A la 3.1.0 (variables, volúmenes y gestor de ficheros)
 

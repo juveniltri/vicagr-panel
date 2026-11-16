@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: { proyecto: { findMany: vi.fn(), updateMany: vi.fn() } },
@@ -22,9 +22,35 @@ import { obtenerMetricas } from "@/lib/system/metrics";
 import {
   comprobarDisco,
   enviarLatido,
+  iniciarVigilancia,
   olvidarFallos,
   reconciliarEstados,
 } from "./vigilancia";
+
+describe("iniciarVigilancia", () => {
+  const global = globalThis as { vigilancia?: ReturnType<typeof setInterval> };
+
+  afterEach(() => {
+    clearInterval(global.vigilancia);
+    global.vigilancia = undefined;
+    vi.useRealTimers();
+  });
+
+  it("cada minuto comprueba Proyectos y disco, y una segunda llamada no duplica el temporizador", async () => {
+    vi.useFakeTimers();
+    vi.mocked(prisma.proyecto.findMany).mockResolvedValue([]);
+    vi.mocked(obtenerMetricas).mockReturnValue({
+      disco: { usado: 1, total: 10, unidad: "GB" },
+    } as never);
+
+    iniciarVigilancia();
+    iniciarVigilancia();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(prisma.proyecto.findMany).toHaveBeenCalledOnce();
+    expect(obtenerMetricas).toHaveBeenCalledOnce();
+  });
+});
 
 type Estado = "running" | "error";
 const proyecto = (

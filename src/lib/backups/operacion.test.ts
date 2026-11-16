@@ -82,14 +82,40 @@ describe("limpiarBackupsHuerfanos", () => {
     mockUpdateMany.mockResolvedValue({ count: 2 });
     expect(
       await limpiarBackupsHuerfanos("Interrumpido por reinicio del panel"),
-    ).toBe(2);
-    expect(mockUpdateMany).toHaveBeenCalledWith({
+    ).toBe(6);
+    expect(mockUpdateMany).toHaveBeenLastCalledWith({
       where: { resultado: "en_curso" },
       data: {
         resultado: "error",
         error: "Interrumpido por reinicio del panel",
         finalizadoEn: expect.any(Date),
       },
+    });
+  });
+
+  // Before the generic close, so these rows get the explanation instead.
+  it("a una restauración cortada le explica qué puede haber quedado a medias", async () => {
+    mockUpdateMany.mockResolvedValue({ count: 0 });
+    await limpiarBackupsHuerfanos("Interrumpido por reinicio del panel");
+    expect(mockUpdateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        resultado: "en_curso",
+        operacion: "restauracion",
+        proyectoId: { not: null },
+      },
+      data: expect.objectContaining({
+        error: expect.stringContaining("los Servicios parados"),
+      }),
+    });
+    expect(mockUpdateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        resultado: "en_curso",
+        operacion: "restauracion",
+        proyectoId: null,
+      },
+      data: expect.objectContaining({
+        error: expect.stringContaining("docs/recuperacion.md"),
+      }),
     });
   });
 

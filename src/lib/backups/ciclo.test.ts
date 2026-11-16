@@ -382,6 +382,26 @@ describe("iniciarCicloDiario", () => {
     expect(m.notificar).toHaveBeenCalledTimes(1);
   });
 
+  // Without this the copy row itself stayed en_curso until the next restart.
+  it("si falla el barrido de elementos, la copia se cierra igualmente en error", async () => {
+    m.elementosUpdateMany.mockImplementation(
+      async ({ where }: { where: { backupId: string } }) => {
+        if (where.backupId === "b-pA") throw new Error("BD caída un momento");
+        return { count: 0 };
+      },
+    );
+    await iniciarCicloDiario();
+    await terminado();
+    expect(m.update).toHaveBeenCalledWith({
+      where: { id: "b-pA" },
+      data: {
+        resultado: "error",
+        error: "No se pudo registrar el resultado del elemento",
+        finalizadoEn: expect.any(Date),
+      },
+    });
+  });
+
   it("si copiarProyecto lanza, la copia de ese Proyecto queda en error", async () => {
     m.copiarProyecto.mockImplementation(async (a: Args) => {
       if (a.proyecto.id === "pA") throw new Error("inesperado");
@@ -521,11 +541,18 @@ describe("iniciarCopiaProyecto", () => {
     });
   });
 
-  it("si no se puede cerrar la fila, lo deja en el log y suelta el bloqueo", async () => {
+  it("si no se puede cerrar la fila, lo deja en el log, avisa y suelta el bloqueo", async () => {
     m.update.mockRejectedValue(new Error("BD caída"));
     await iniciarCopiaProyecto("pA");
     await terminado();
     expect(m.error).toHaveBeenCalled();
+    // The history cannot say how it went, so the warning has to.
+    expect(m.notificar).toHaveBeenCalledWith({
+      operacion: "copia",
+      origen: "manual",
+      error: "No se pudo registrar el resultado de la copia: BD caída",
+      proyecto: expect.any(String),
+    });
   });
 
   it("sin contenedores: No hay nada que copiar, sin fila", async () => {

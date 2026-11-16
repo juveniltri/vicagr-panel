@@ -12,13 +12,13 @@ const CONFIRMACION = "RESTAURAR";
 export function CopiasBackup({
   copias,
 }: {
-  copias: CopiaBackup[] | { error: string };
+  copias: CopiaBackup[] | { error: string; sinConfigurar?: boolean };
 }) {
   const [elegida, setElegida] = useState<CopiaBackup | null>(null);
 
   if ("error" in copias) {
     // Not a failure: the destination has simply not been set up yet.
-    if (copias.error.startsWith("Backups sin configurar")) {
+    if (copias.sinConfigurar) {
       return (
         <p className="font-body text-xs text-text-muted">{copias.error}</p>
       );

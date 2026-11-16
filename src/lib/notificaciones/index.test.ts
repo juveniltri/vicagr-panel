@@ -398,6 +398,58 @@ describe("notificarFalloBackup", () => {
     mockEnviarWebhook.mockResolvedValue(undefined);
   });
 
+  // Whoever cancelled is looking at the Panel: that is not a failure to warn of.
+  it.each([
+    "Cancelado por ana@vicagr.local",
+    "bd:db: Cancelado por ana@vicagr.local\nLos Servicios quedan parados",
+  ])("no avisa de una cancelación del usuario («%s»)", async (error) => {
+    mockFindUnique.mockResolvedValue({ ...configSoloWebhook });
+    await notificarFalloBackup({ operacion: "copia", origen: "manual", error });
+    expect(mockEnviarWebhook).not.toHaveBeenCalled();
+  });
+
+  it("el borrado de copias de un Proyecto eliminado se nombra como tal", async () => {
+    mockFindUnique.mockResolvedValue({ ...configSoloWebhook });
+    await notificarFalloBackup({
+      operacion: "borrado",
+      origen: "manual",
+      error: "sin destino",
+      proyecto: "acme/web",
+    });
+    expect(mockEnviarWebhook).toHaveBeenCalledWith(
+      "https://hooks.ejemplo.com",
+      expect.objectContaining({
+        rama: "borrado de copias",
+        clienteSlug: "acme",
+        proyectoNombre: "web",
+      }),
+    );
+  });
+
+  it("el aviso sale sin los valores de filas que cita psql", async () => {
+    mockFindUnique.mockResolvedValue({ ...configSoloWebhook });
+    await notificarFalloBackup({
+      operacion: "restauracion",
+      origen: "manual",
+      error:
+        "bd:db: ERROR: duplicado\nDETAIL:  Key (email)=(ana@x.es) already exists.",
+    });
+    expect(mockEnviarWebhook).toHaveBeenCalledWith(
+      "https://hooks.ejemplo.com",
+      expect.objectContaining({ output: "bd:db: ERROR: duplicado" }),
+    );
+  });
+
+  it("sí avisa cuando se cancela por superar el tiempo máximo", async () => {
+    mockFindUnique.mockResolvedValue({ ...configSoloWebhook });
+    await notificarFalloBackup({
+      operacion: "copia",
+      origen: "programado",
+      error: "Cancelado: superó 60 minutos",
+    });
+    expect(mockEnviarWebhook).toHaveBeenCalled();
+  });
+
   it("envía un payload de backup con el motivo como salida", async () => {
     mockFindUnique.mockResolvedValue({ ...configSoloWebhook });
     await notificarFalloBackup({

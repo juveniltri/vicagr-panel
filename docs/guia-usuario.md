@@ -129,11 +129,29 @@ Objetivo: que cada push a la rama del Proyecto lo despliegue solo.
 2. En GitHub, en el repositorio: **Settings → Webhooks → Add webhook**.
    - **Payload URL**: la que muestra el Panel (`https://<dominio del Panel>/api/webhooks/github`).
    - **Content type**: `application/json`.
-   - **Secret**: el `GITHUB_WEBHOOK_SECRET` del `.env` de la VPS (pídelo a quien la administra).
+   - **Secret**: el `GITHUB_WEBHOOK_SECRET` del `.env` de la VPS (pídelo a quien la administra),
+     o el secreto propio del Proyecto (ver más abajo).
    - Eventos: **Just the push event**.
 3. Guarda. GitHub envía un `ping`: en **Recent Deliveries** debe aparecer con respuesta 2xx.
 4. En el Panel, abre el Proyecto y activa **Auto-deploy** en la tarjeta «Proyecto» del
    Resumen. Desde ese momento, cada push a su rama lanza un deploy con origen «webhook».
+
+### Secreto propio del Proyecto
+
+Con el secreto global, quien lo conozca puede desplegar cualquier Proyecto con Auto-deploy. Un
+Proyecto con secreto propio solo se despliega con el suyo; el global deja de valer para él. La
+Payload URL es la misma.
+
+1. En la tarjeta «Proyecto» del Resumen, en **Secreto del webhook**, pulsa **Generar secreto
+   propio** y cópialo con **Copiar**: el Panel no lo vuelve a mostrar.
+2. En GitHub, en el webhook del repositorio: **Edit → Secret**, pégalo y guarda (**Update webhook**).
+3. Comprueba en **Recent Deliveries → Redeliver** que responde 2xx. Desde que generas el secreto
+   hasta que lo pegas en GitHub, los push no despliegan ese Proyecto.
+
+Para **rotarlo** (por ejemplo, si se ha filtrado): **Regenerar**, confirmar y repetir los pasos 2
+y 3; el anterior deja de valer al momento. **Quitar** vuelve al secreto global: pon otra vez el
+`GITHUB_WEBHOOK_SECRET` en GitHub. Si varios Proyectos usan el mismo repositorio y cada uno tiene
+su secreto, en GitHub hace falta un webhook por Proyecto, cada uno con su secreto.
 
 ![Datos del webhook de GitHub en Configuración](../public/guia/config-webhook.png)
 
@@ -538,7 +556,7 @@ Si aun así no se puede entrar al Panel, hay un **acceso de emergencia** que no 
 ![Webhook de GitHub](../public/guia/config-webhook.png)
 
 - Los datos para configurar el webhook en cada repositorio: Payload URL, content type y secret
-  (tarea 4).
+  (tarea 4). El secreto propio de un Proyecto se genera en su ficha.
 
 ## Configuración — Sistema
 
