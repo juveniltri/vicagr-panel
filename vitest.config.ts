@@ -32,6 +32,8 @@ export default defineConfig({
         "src/lib/auth.ts",
         "src/lib/sentry.ts",
         "src/lib/logger.ts",
+        // Infrastructure tier (regla 100/80/0)
+        "src/lib/docker/**",
         // Server infrastructure
         "src/server/trpc.ts",
         "src/server/caller.ts",
@@ -45,67 +47,8 @@ export default defineConfig({
           lines: 100,
           statements: 100,
         },
-        "src/lib/guia.ts": {
-          branches: 100,
-          functions: 100,
-          lines: 100,
-          statements: 100,
-        },
-        "src/lib/formatHace.ts": {
-          branches: 100,
-          functions: 100,
-          lines: 100,
-          statements: 100,
-        },
-        "src/lib/backups/**": {
-          branches: 100,
-          functions: 100,
-          lines: 100,
-          statements: 100,
-        },
-        "src/lib/traefik/**": {
-          branches: 100,
-          functions: 100,
-          lines: 100,
-          statements: 100,
-        },
-        "src/lib/github/**": {
-          branches: 100,
-          functions: 100,
-          lines: 100,
-          statements: 100,
-        },
-        "src/lib/schemas/**": {
-          branches: 100,
-          functions: 100,
-          lines: 100,
-          statements: 100,
-        },
-        "src/lib/system/**": {
-          branches: 100,
-          functions: 100,
-          lines: 100,
-          statements: 100,
-        },
-        "src/lib/ssl/**": {
-          branches: 100,
-          functions: 100,
-          lines: 100,
-          statements: 100,
-        },
-        "src/lib/changelog.ts": {
-          branches: 100,
-          functions: 100,
-          lines: 100,
-          statements: 100,
-        },
-        "src/lib/rate-limit.ts": {
-          branches: 100,
-          functions: 100,
-          lines: 100,
-          statements: 100,
-        },
-        "src/lib/notificaciones/**": {
+        // Toda src/lib salvo src/lib/docker (Infrastructure, excluida arriba).
+        "src/lib/**": {
           branches: 100,
           functions: 100,
           lines: 100,

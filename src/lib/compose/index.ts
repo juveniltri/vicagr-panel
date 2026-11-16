@@ -39,7 +39,8 @@ export function extraerServicios(content: string): string[] {
 function puertoContenedorDe(entrada: unknown): number | undefined {
   // formatos válidos en expose/ports: 8000, "8000", "8000/tcp", "8000:8000",
   // "127.0.0.1:8000:8000" — el puerto de contenedor es siempre el último tramo.
-  const ultimoTramo = String(entrada).split(":").at(-1) ?? "";
+  const texto = String(entrada);
+  const ultimoTramo = texto.slice(texto.lastIndexOf(":") + 1);
   const puerto = Number(ultimoTramo.split("/")[0]);
   return Number.isFinite(puerto) ? puerto : undefined;
 }

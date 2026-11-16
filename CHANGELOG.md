@@ -5,6 +5,52 @@ Novedades. Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES
 cada versión con su fecha, un resumen de una línea y los apartados Novedades,
 Correcciones y Seguridad.
 
+## [3.2.0] - 2026-11-15
+
+Secreto de webhook por Proyecto, CSP estricta, actualizaciones sin construir en la VPS y
+backups más fiables.
+
+### Novedades
+
+- **Secreto de webhook propio**: en la tarjeta «Proyecto» del Resumen, **Generar secreto
+  propio** crea un secreto solo para ese Proyecto (se muestra una vez para pegarlo en GitHub).
+  Con él, el secreto global deja de desplegarlo. Se puede regenerar o quitar; la Payload URL no
+  cambia. Pasos en la guía, tarea 4.
+- **Actualizar sin construir en la VPS**: cada versión publica la imagen del Panel en GitHub
+  Container Registry; la VPS la descarga en vez de construirla, más rápido y sin cargar la
+  máquina. Volver a la versión anterior es cambiar `PANEL_VERSION` y arrancar.
+- **Resumen del último ciclo de backups** en Configuración → Backups: cuándo fue la última copia
+  programada, cómo acabó la del Panel y qué Proyectos se copiaron bien o fallaron.
+
+### Correcciones
+
+- **Backups que se quedaban colgados**: un destino que no responde ya no deja bloqueadas las
+  copias ni las restauraciones; tienen tiempos máximos y se cierran aunque falle un paso.
+- **Avisos de backups fiables**: cancelar ya no llega como fallo, y los avisos dicen cuándo no se
+  pudo registrar o borrar algo, o qué ha quedado a medias tras un reinicio.
+- **Restaurar**: el modal ya no ofrece lo que no se copió entero, la lista no se rompe con una
+  copia desconocida y, si Docker no responde, la pestaña lo dice en vez de «no tiene
+  contenedores».
+- **Pestaña Backups**: se maneja con teclado, cada botón Restaurar dice de qué copia es, la copia
+  diaria no se puede tocar mientras se restaura y un fallo al leer la configuración ya no tumba
+  la página del Proyecto.
+
+### Seguridad
+
+- **CSP estricta**: el navegador solo ejecuta los scripts del propio Panel, cada uno con un nonce
+  por petición; ningún script inyectado ni `eval` se ejecuta.
+- **«Solo desde Cloudflare»** se aplica también a la redirección `www`, que respondía a quien se
+  saltaba Cloudflare y revelaba el origen.
+- Los avisos de fallo de backups ya no incluyen líneas de la BD que citan datos de filas, y los
+  contenedores auxiliares de copia corren sin red.
+
+### Al actualizar
+
+- Una migración (se aplica sola) y la variable nueva `PANEL_VERSION`. Antes, una vez por VPS,
+  `docker login ghcr.io` con un token de solo lectura. Pasos en `production.md` § B1c.
+- Quien quiera usar un secreto de webhook propio tiene que pegarlo en el webhook de GitHub del
+  repositorio; los demás siguen igual.
+
 ## [3.1.0] - 2026-11-15
 
 Avisos cuando un Proyecto se cae y correcciones de la auditoría de noviembre: variables con

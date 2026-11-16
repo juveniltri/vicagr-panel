@@ -378,6 +378,26 @@ describe("solo desde Cloudflare", () => {
     expect(Object.keys(config.http.middlewares ?? {})).toEqual([]);
   });
 
+  // Otherwise www.<dominio> answers anyone who skips Cloudflare.
+  it("protege también el host de la redirección www", () => {
+    const { config } = generar([
+      ruta({
+        dominio: "example.com",
+        redireccionWww: "a_raiz",
+        cloudflare: true,
+        soloCloudflare: true,
+      }),
+    ]);
+
+    const redireccion = Object.values(config.http.routers).find(
+      (r) => r.rule === "Host(`www.example.com`)",
+    );
+    expect(redireccion?.middlewares).toEqual([
+      "acme-web-r1-cloudflare",
+      "acme-web-r1-www",
+    ]);
+  });
+
   it("falla en cerrado con rangos vacíos", () => {
     const { config } = generar(
       [ruta({ cloudflare: true, soloCloudflare: true })],

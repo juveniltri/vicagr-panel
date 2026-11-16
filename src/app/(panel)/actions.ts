@@ -176,6 +176,24 @@ export async function toggleAutoDeployAction(id: string) {
   }
 }
 
+export async function generarSecretoWebhookAction(id: string) {
+  try {
+    const api = await createServerCaller();
+    return await api.proyectos.generarSecretoWebhook({ id });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al generar el secreto") };
+  }
+}
+
+export async function quitarSecretoWebhookAction(id: string) {
+  try {
+    const api = await createServerCaller();
+    await api.proyectos.quitarSecretoWebhook({ id });
+  } catch (err) {
+    return { error: parseTRPCError(err, "Error al quitar el secreto") };
+  }
+}
+
 export async function eliminarProyectoAction(
   id: string,
   borrarCopias: boolean = false,

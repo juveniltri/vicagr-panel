@@ -16,3 +16,7 @@ export type EjecucionBackup = RouterOutput["backups"]["historial"][number];
 export type CopiaBackup = RouterOutput["backups"]["copias"][number];
 export type BackupsProyectoVista = RouterOutput["backups"]["elementosProyecto"];
 export type CopiaProyecto = RouterOutput["backups"]["copiasProyecto"][number];
+
+// Guide section that explains restoring .panel/ by hand, linked from the
+// Backups tab; guia-contenido.test.ts checks it exists.
+export const GUIA_A_MANO = "/guia#10-copias-y-restauracion-de-un-proyecto";

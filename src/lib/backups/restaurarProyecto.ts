@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { eliminarAuxiliar, nombreAuxiliar } from "./auxiliar";
 import {
   filtrarRolesSql,
+  copiaEntera,
   hashClave,
   procesoEsperarBd,
   procesoExtraerDatos,
@@ -80,21 +81,6 @@ const nombreDe = (p: ProyectoRestauracion) => `${p.clienteSlug}/${p.nombre}`;
 const aviso = (p: ProyectoRestauracion) =>
   `Los Servicios de ${nombreDe(p)} se han quedado parados. Restaura otra vez (la copia previa está en la lista) o arráncalos a mano.`;
 
-// A failed element may have left some bases without others (or without
-// roles): restoring that would silently drop data.
-function copiaEntera(
-  e: Elemento,
-  partes: SnapshotProyecto[],
-  registrados: { clave: string; resultado: string }[],
-): boolean {
-  const filas = registrados.filter((r) => r.clave === e.clave);
-  if (filas.length > 0) return filas.every((r) => r.resultado === "exito");
-  // No row (Panel recovered on a new VPS): the snapshots must show it finished.
-  if (e.tipo === "datos") return true;
-  const fin = e.motor === "mysql" ? "/todo.sql" : "/_roles.sql";
-  return partes.some((s) => s.ruta.endsWith(fin));
-}
-
 async function validar(p: {
   proyectoId: string;
   copiaId: string;
@@ -147,7 +133,7 @@ async function validar(p: {
     if (!elemento) {
       throw new RestauracionRechazada(`${clave} ya no se monta en el Proyecto`);
     }
-    if (!copiaEntera(elemento, partes, registrados)) {
+    if (!copiaEntera(clave, partes, registrados)) {
       throw new RestauracionRechazada(
         `${clave} no se copió entero en esa copia`,
       );
@@ -410,6 +396,20 @@ async function restaurar(
   await terminar(plan, filas, arrancadas, signal);
 }
 
+export const REINTENTOS_REGISTRO = 3;
+export const PAUSA_REGISTRO_MS = 500;
+
+async function conReintentos<T>(fn: () => Promise<T>): Promise<T> {
+  for (let intento = 1; ; intento++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (intento === REINTENTOS_REGISTRO) throw err;
+      await new Promise((r) => setTimeout(r, PAUSA_REGISTRO_MS));
+    }
+  }
+}
+
 // The restored Servicios are running again: a bookkeeping failure from here on
 // is reported but must never stop them.
 async function terminar(
@@ -429,16 +429,20 @@ async function terminar(
       anotar(`Restaurado, pero no se pudo volver a parar ${s}`),
     );
   }
-  await prisma.backup
-    .update({
+  // A brief database hiccup would otherwise leave the row en_curso until the
+  // Panel restarts, although the restore went fine.
+  const registrar = () =>
+    prisma.backup.update({
       where: { id: filas.restauracion },
       data: {
         resultado: "exito",
         finalizadoEn: new Date(),
         ...(avisos.length > 0 ? { error: avisos.join("\n") } : {}),
       },
-    })
-    .catch(anotar("Restaurado, pero no se pudo registrar en el historial"));
+    });
+  await conReintentos(registrar).catch(
+    anotar("Restaurado, pero no se pudo registrar en el historial"),
+  );
   if (avisos.length > 0) {
     await notificarFalloBackup({
       operacion: "restauracion",
@@ -486,7 +490,15 @@ async function fallar(
       );
   }
   try {
-    if (!estado.previaCerrada) await cerrarPrevia(filas.previa, motivo);
+    // Separate from the restore's own row: one failed update must not leave
+    // the other en_curso.
+    if (!estado.previaCerrada)
+      await cerrarPrevia(filas.previa, motivo).catch((e: unknown) =>
+        log.error(
+          { err: e, proyectoId: proyecto.id },
+          "No se pudo cerrar la copia previa",
+        ),
+      );
     await prisma.backup.update({
       where: { id: filas.restauracion },
       data: { resultado: "error", error, finalizadoEn: new Date() },

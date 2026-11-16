@@ -7,13 +7,14 @@ import {
   cargarConfigResuelta,
 } from "@/lib/backups/configuracion";
 import { iniciarCopiaProyecto, NadaQueCopiar } from "@/lib/backups/ciclo";
-import { claveDeRuta } from "@/lib/backups/comandos";
+import { claveConocida, copiaEntera } from "@/lib/backups/comandos";
 import { iniciarCopia } from "@/lib/backups/copia";
 import { detectarProyecto } from "@/lib/backups/deteccion";
 import { generarClave, kitRecuperacion } from "@/lib/backups/kit";
 import {
   OperacionEnCurso,
   cancelarOperacion,
+  motivoCancelacion,
   hayOperacionEnCurso,
 } from "@/lib/backups/operacion";
 import { proximaCopia } from "@/lib/backups/programacion";
@@ -167,8 +168,22 @@ export const backupsRouter = router({
     const ultimo = await prisma.backup.findFirst({
       where: { operacion: "copia", origen: "programado", proyectoId: null },
       orderBy: { iniciadoEn: "desc" },
-      select: { iniciadoEn: true },
+      select: { iniciadoEn: true, resultado: true },
     });
+    // The daily cycle copies the Panel first and then each Proyecto: the
+    // Proyecto rows since the last Panel row are that night's.
+    const delCiclo = ultimo
+      ? await prisma.backup.findMany({
+          where: {
+            operacion: "copia",
+            origen: "programado",
+            proyectoId: { not: null },
+            iniciadoEn: { gte: ultimo.iniciadoEn },
+          },
+          orderBy: { iniciadoEn: "asc" },
+          select: { proyectoNombre: true, resultado: true },
+        })
+      : [];
     const hora = c?.hora ?? 3;
     return {
       habilitado: c?.habilitado ?? false,
@@ -199,6 +214,16 @@ export const backupsRouter = router({
       repositorioInicializado: Boolean(c?.repositorioInicializadoEn),
       proximaCopia: c?.habilitado
         ? proximaCopia(new Date(), hora, ultimo?.iniciadoEn ?? null)
+        : null,
+      ultimoCiclo: ultimo
+        ? {
+            iniciadoEn: ultimo.iniciadoEn,
+            panel: ultimo.resultado,
+            proyectos: delCiclo.map((b) => ({
+              nombre: b.proyectoNombre ?? "—",
+              resultado: b.resultado,
+            })),
+          }
         : null,
       enCurso: hayOperacionEnCurso(),
     };
@@ -446,11 +471,15 @@ export const backupsRouter = router({
       return {
         habilitado: proyecto.backupsHabilitados,
         valida: deteccion.valida,
+        // Only what the screen shows: container ids and host paths stay in
+        // the server.
         elementos: deteccion.elementos.map((e) => ({
-          ...e,
+          clave: e.clave,
+          tipo: e.tipo,
           incluido: !excluidos.has(e.clave),
         })),
         noCopiados: deteccion.noCopiados,
+        errorDeteccion: deteccion.error ?? null,
         ultima,
         restaurando: estaRestaurando(proyecto.id),
         enCurso: hayOperacionEnCurso(),
@@ -515,12 +544,20 @@ export const backupsRouter = router({
         const grupos = new Map<string, typeof snapshots>();
         for (const s of snapshots)
           grupos.set(s.backupId, [...(grupos.get(s.backupId) ?? []), s]);
+        const registrados = await prisma.elementoCopia.findMany({
+          where: { backupId: { in: [...grupos.keys()] } },
+          select: { backupId: true, clave: true, resultado: true },
+        });
         return [...grupos.entries()]
           .map(([id, miembros]) => {
             const conBytes = miembros.filter((s) => s.bytes !== null);
-            const claves = [
-              ...new Set(miembros.map((s) => claveDeRuta(s.ruta))),
-            ];
+            const porClave = new Map<string, typeof miembros>();
+            for (const s of miembros) {
+              const clave = claveConocida(s.ruta);
+              // A snapshot written by another version must not hide the rest.
+              if (clave)
+                porClave.set(clave, [...(porClave.get(clave) ?? []), s]);
+            }
             return {
               id,
               fecha: new Date(
@@ -530,10 +567,18 @@ export const backupsRouter = router({
               bytes: conBytes.length
                 ? conBytes.reduce((a, s) => a + Number(s.bytes), 0)
                 : null,
-              elementos: claves.map((clave) => ({
-                clave,
-                restaurable: !clave.startsWith("datos:.panel/"),
-              })),
+              elementos: [...porClave.entries()].map(([clave, partes]) => {
+                const noRestaurable = clave.startsWith("datos:.panel/")
+                  ? ("a_mano" as const)
+                  : copiaEntera(
+                        clave,
+                        partes,
+                        registrados.filter((r) => r.backupId === id),
+                      )
+                    ? null
+                    : ("incompleta" as const);
+                return { clave, restaurable: !noRestaurable, noRestaurable };
+              }),
             };
           })
           .sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
@@ -571,7 +616,7 @@ export const backupsRouter = router({
   cancelar: protectedProcedure.mutation(({ ctx }) => {
     const quien =
       ctx.session.user?.name ?? ctx.session.user?.email ?? "un usuario";
-    if (!cancelarOperacion(`Cancelado por ${quien}`))
+    if (!cancelarOperacion(motivoCancelacion(quien)))
       throw new TRPCError({
         code: "NOT_FOUND",
         message: "No hay ninguna operación en curso",

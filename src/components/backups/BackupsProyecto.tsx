@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -13,9 +13,10 @@ import {
 import { DeployPoller } from "@/components/dashboard/DeployPoller";
 import { ProjectActionButton } from "@/components/dashboard/ProjectActionButton";
 import { useToast } from "@/components/ui/Toast";
-import type {
-  BackupsProyectoVista,
-  CopiaProyecto,
+import {
+  GUIA_A_MANO,
+  type BackupsProyectoVista,
+  type CopiaProyecto,
 } from "@/lib/schemas/dashboard";
 import { formatearBytes, formatearFecha } from "./HistorialBackups";
 
@@ -105,6 +106,16 @@ function Contenido({
     Object.fromEntries(estado.elementos.map((e) => [e.clave, e.incluido])),
   );
   const [elegida, setElegida] = useState<CopiaProyecto | null>(null);
+  // Every refresh brings what the server has (another tab, the poller):
+  // that wins over what this screen remembered.
+  const [estadoPrevio, setEstadoPrevio] = useState(estado);
+  if (estado !== estadoPrevio) {
+    setEstadoPrevio(estado);
+    setHabilitado(estado.habilitado);
+    setIncluidos(
+      Object.fromEntries(estado.elementos.map((e) => [e.clave, e.incluido])),
+    );
+  }
 
   const ocupado = estado.restaurando || estado.enCurso;
   const puedeCopiar = destinoConfigurado && estado.valida && !ocupado;
@@ -166,7 +177,7 @@ function Contenido({
             role="switch"
             aria-checked={habilitado}
             aria-label="Copias de este Proyecto"
-            disabled={isPending}
+            disabled={isPending || estado.restaurando}
             onClick={cambiarHabilitado}
             className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-40 ${
               habilitado ? "bg-[var(--color-accent)]" : "bg-border"
@@ -203,27 +214,32 @@ function Contenido({
         </div>
       </div>
 
-      {!estado.valida ? (
+      {estado.errorDeteccion ? (
+        <p role="alert" className="font-body text-xs text-state-error">
+          {estado.errorDeteccion}: no se puede saber qué copiar. Vuelve a cargar
+          la página en un momento.
+        </p>
+      ) : !estado.valida ? (
         <p className="font-body text-xs text-text-muted">
           El Proyecto no tiene contenedores: despliégalo para detectar qué se
           puede copiar.
         </p>
       ) : (
         <ul className="flex flex-col">
-          {estado.elementos.map((e) => (
+          {estado.elementos.map((e, i) => (
             <li
               key={e.clave}
               className="flex items-center gap-3 border-t border-border py-2 first:border-t-0 font-body text-[12.5px]"
             >
               <input
-                id={`elemento-${e.clave}`}
+                id={`elemento-${i}`}
                 type="checkbox"
                 checked={incluidos[e.clave] ?? e.incluido}
                 disabled={estado.restaurando}
                 onChange={(ev) => marcar(e.clave, ev.target.checked)}
                 className="h-4 w-4 accent-[var(--color-accent)]"
               />
-              <label htmlFor={`elemento-${e.clave}`} className="font-mono">
+              <label htmlFor={`elemento-${i}`} className="font-mono">
                 {e.clave}
               </label>
               <span className="ml-auto text-text-muted">
@@ -309,6 +325,8 @@ function ListaCopias({
             type="button"
             disabled={deshabilitado}
             onClick={() => onElegir(c)}
+            // One per copy: the date tells them apart for a screen reader.
+            aria-label={`Restaurar la copia del ${formatearFecha(c.fecha)}`}
             className={`ml-auto ${botonSecundario}`}
           >
             Restaurar
@@ -338,6 +356,39 @@ function ModalRestaurar({
   const [texto, setTexto] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const dialogo = useRef<HTMLDivElement>(null);
+
+  // Focus moves into the dialog and goes back to the button that opened it.
+  useEffect(() => {
+    const anterior = document.activeElement as HTMLElement | null;
+    dialogo.current
+      ?.querySelector<HTMLElement>("input:not(:disabled)")
+      ?.focus();
+    return () => anterior?.focus();
+  }, []);
+
+  const teclado = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape" && !isPending) {
+      onCerrar();
+      return;
+    }
+    if (e.key !== "Tab" || !dialogo.current) return;
+    // Keep Tab inside: the page behind is not reachable while it is open.
+    const enfocables = [
+      ...dialogo.current.querySelectorAll<HTMLElement>(
+        "a[href], button:not(:disabled), input:not(:disabled)",
+      ),
+    ];
+    const primero = enfocables[0];
+    const ultimo = enfocables.at(-1);
+    if (e.shiftKey && document.activeElement === primero) {
+      e.preventDefault();
+      ultimo?.focus();
+    } else if (!e.shiftKey && document.activeElement === ultimo) {
+      e.preventDefault();
+      primero?.focus();
+    }
+  };
 
   const alternar = (clave: string, marcada: boolean) =>
     setClaves((actual) =>
@@ -366,9 +417,11 @@ function ModalRestaurar({
   return (
     <div className="fixed inset-0 z-50 grid place-items-center p-6 bg-[rgba(8,9,13,0.62)] backdrop-blur-[7px]">
       <div
+        ref={dialogo}
         role="dialog"
         aria-modal="true"
         aria-labelledby="restaurar-proyecto-titulo"
+        onKeyDown={teclado}
         className="w-[560px] max-w-full flex flex-col gap-4 bg-surface border border-border rounded-[var(--radius-lg)] p-[22px] shadow-[0_24px_70px_-20px_rgba(0,0,0,0.7)]"
       >
         <h2
@@ -383,26 +436,35 @@ function ModalRestaurar({
           mientras dure la restauración.
         </p>
         <ul className="flex flex-col gap-1">
-          {copia.elementos.map((e) => (
+          {copia.elementos.map((e, i) => (
             <li
               key={e.clave}
               className="flex flex-wrap items-center gap-2 font-body text-[12.5px]"
             >
+              {/* The key can hold spaces and slashes: not valid in an id. */}
               <input
-                id={`restaurar-${e.clave}`}
+                id={`restaurar-elemento-${i}`}
                 type="checkbox"
                 disabled={!e.restaurable}
                 checked={e.restaurable && claves.includes(e.clave)}
                 onChange={(ev) => alternar(e.clave, ev.target.checked)}
                 className="h-4 w-4 accent-[var(--color-accent)]"
               />
-              <label htmlFor={`restaurar-${e.clave}`} className="font-mono">
+              <label htmlFor={`restaurar-elemento-${i}`} className="font-mono">
                 {e.clave}
               </label>
-              {!e.restaurable && (
-                <Link href="/guia" className="text-xs text-accent underline">
+              {e.noRestaurable === "a_mano" && (
+                <Link
+                  href={GUIA_A_MANO}
+                  className="text-xs text-accent underline"
+                >
                   Se restaura a mano
                 </Link>
+              )}
+              {e.noRestaurable === "incompleta" && (
+                <span className="text-xs text-text-muted">
+                  No se copió entero en esta copia
+                </span>
               )}
             </li>
           ))}
@@ -441,10 +503,9 @@ function ModalRestaurar({
             disabled={
               texto !== proyectoNombre || claves.length === 0 || isPending
             }
-            aria-label="Restaurar copia"
             className="inline-flex items-center min-h-10 px-4 rounded-[var(--radius-md)] bg-[var(--color-state-error)] font-body text-[12.5px] font-semibold text-white disabled:opacity-50"
           >
-            {isPending ? "Restaurando…" : "Restaurar"}
+            {isPending ? "Restaurando…" : "Restaurar copia"}
           </button>
         </div>
       </div>

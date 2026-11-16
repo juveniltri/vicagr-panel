@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
@@ -48,6 +49,9 @@ export default async function ConfiguracionPage({
           api.backups.historial(),
           api.backups.copias().catch((e: unknown) => ({
             error: e instanceof Error ? e.message : String(e),
+            // By its code, not by the wording of the message.
+            sinConfigurar:
+              e instanceof TRPCError && e.code === "PRECONDITION_FAILED",
           })),
         ])
       : null;
@@ -165,12 +169,13 @@ export default async function ConfiguracionPage({
                   <Campo etiqueta="Content type" valor="application/json" />
                   <Campo
                     etiqueta="Secret"
-                    valor="GITHUB_WEBHOOK_SECRET (del .env)"
+                    valor="GITHUB_WEBHOOK_SECRET (del .env) o el propio del proyecto"
                   />
                 </div>
                 <p className="font-body text-xs text-text-muted">
                   Eventos: «Just the push event». Activa el auto-deploy en cada
-                  proyecto desde su ficha.
+                  proyecto desde su ficha; allí también puedes generarle un
+                  secreto propio, y entonces el global deja de valer para él.
                 </p>
               </Tarjeta>
             </>
