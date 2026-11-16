@@ -11,6 +11,7 @@ import { ErrorProceso } from "./procesos";
 import {
   eliminarAuxiliar,
   IMAGEN_AUXILIAR,
+  LIMITE_ELIMINAR_MS,
   limpiarAuxiliaresHuerfanos,
   nombreAuxiliar,
 } from "./auxiliar";
@@ -33,8 +34,19 @@ describe("auxiliar", () => {
     expect(mockEjecutar).toHaveBeenCalledWith(
       "docker",
       ["rm", "-f", "vicagr-backup-x"],
-      {},
+      { signal: expect.any(AbortSignal) },
     );
+  });
+
+  it("no espera para siempre a un Docker colgado", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    mockEjecutar.mockResolvedValue("");
+    await eliminarAuxiliar("vicagr-backup-x");
+    expect(timeout).toHaveBeenCalledWith(LIMITE_ELIMINAR_MS);
+    expect(mockEjecutar.mock.calls.at(-1)![2]).toEqual({
+      signal: timeout.mock.results[0]!.value,
+    });
+    timeout.mockRestore();
   });
 
   it("ignora «No such container»", async () => {

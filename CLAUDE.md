@@ -163,7 +163,7 @@ NOTE:  contexto que sorprendería a un futuro lector
 - Variables sensibles: nunca en `NEXT_PUBLIC_*`
 - CSRF: tokens en todas las operaciones que muten estado
 - Headers HTTP obligatorios: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`
-- CSP: definida y activa en producción
+- CSP: definida y activa en producción, en `src/proxy.ts` (no en `next.config.ts`) con un nonce por petición: `script-src 'self' 'nonce-…'`, sin `unsafe-*`. Todo script inline necesita `nonce` (el layout lo lee de `x-nonce`); por eso todas las páginas son dinámicas. `style-src` sigue con `'unsafe-inline'` (atributos `style` de Monaco y React)
 - TLS: mínimo TLS 1.2 — Traefik gestiona la negociación
 - Webhook secret de GitHub: validar HMAC-SHA256 en cada petición entrante
 - Sesión: JWT de 7 días validado contra la BD en cada `auth()` (`sesionVigente`, `src/lib/sesion.ts`): un usuario eliminado o con la contraseña cambiada (`User.sesionesDesde`) pierde la sesión al momento
@@ -191,7 +191,6 @@ npm run build            # build de producción
 npm run lint             # eslint
 npm run type-check       # tsc --noEmit
 npm run test:unit        # vitest (unitarios)
-npm run test:integration # vitest (integración)
 npm run test:e2e         # playwright
 npm run db:migrate       # ejecutar migraciones pendientes
 npm run db:seed          # poblar con datos de desarrollo
@@ -233,9 +232,14 @@ problemas frecuentes (§ E). Resumen:
 
 ```bash
 git clone <repo> /opt/vicagr-panel && cd /opt/vicagr-panel
-cp .env.production.example .env   # rellenar
-docker compose up -d --build      # también al actualizar: el stack completo, tras git pull
+cp .env.production.example .env   # rellenar, con PANEL_VERSION=X.Y.Z
+docker login ghcr.io              # una vez, token read:packages
+git checkout vX.Y.Z && docker compose pull panel && docker compose up -d   # también al actualizar
 ```
+
+`release.yml` publica la imagen `ghcr.io/juveniltri/vicagr-panel:X.Y.Z` (y `latest`) al subir el
+tag, antes de crear la Release. Sin `PANEL_VERSION` el compose usa el tag `local` y
+`up -d --build` la construye en la VPS (así lo hacen la e2e y `npm run guia`).
 
 Al publicar una versión con pasos manuales, añadirlos en `production.md` § B además del
 `### Al actualizar` del CHANGELOG.
@@ -296,7 +300,10 @@ reconstruye desde el commit, así que no las necesita.
 ### Nota — webhook de GitHub
 
 Endpoint `POST /api/webhooks/github`, content type `application/json` (también acepta form-urlencoded),
-secret = `GITHUB_WEBHOOK_SECRET`, evento push. La URL del repo se compara normalizada (con/sin `.git`,
+secret = `GITHUB_WEBHOOK_SECRET` o el propio del Proyecto (`secretoWebhookCifrado`, generado en su
+ficha y mostrado una vez), evento push. Un Proyecto con secreto propio solo se despliega con él;
+si el global no firma, la ruta prueba los secretos de los Proyectos del repo. Los tres campos van
+en el `omit` global de `src/lib/prisma.ts` (para leerlos: `select` u `omit: { …: false }`). La URL del repo se compara normalizada (con/sin `.git`,
 https/ssh), responde `202` y despliega en segundo plano el sha exacto del push. Al crear el webhook
 GitHub envía un `ping`: si en _Recent Deliveries_ no aparece nada, GitHub no ha llamado al panel.
 

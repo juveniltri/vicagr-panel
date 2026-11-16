@@ -1,4 +1,6 @@
 import { descifrar } from "@/lib/crypto";
+import { sinValoresDeFilas } from "@/lib/backups/comandos";
+import { esCancelacionDelUsuario } from "@/lib/backups/operacion";
 import { prisma } from "@/lib/prisma";
 import { enviarEmail } from "./email";
 import { enviarTelegram } from "./telegram";
@@ -81,12 +83,15 @@ const ORIGEN_BACKUP = {
 } as const;
 
 export async function notificarFalloBackup(datos: {
-  operacion: "copia" | "restauracion";
+  // borrado: «Borrar también sus copias ahora» when deleting a Proyecto.
+  operacion: "copia" | "restauracion" | "borrado";
   origen: keyof typeof ORIGEN_BACKUP;
   error: string;
   // "<cliente>/<proyecto>"; without it the failure is the Panel's own copy.
   proyecto?: string;
 }): Promise<void> {
+  // Whoever cancelled is looking at the Panel; the history keeps the reason.
+  if (esCancelacionDelUsuario(datos.error)) return;
   const barra = datos.proyecto?.indexOf("/") ?? -1;
   await enviarNotificacion({
     evento: "backup",
@@ -95,10 +100,12 @@ export async function notificarFalloBackup(datos: {
     rama:
       datos.operacion === "copia"
         ? `copia ${ORIGEN_BACKUP[datos.origen]}`
-        : "restauración",
+        : datos.operacion === "restauracion"
+          ? "restauración"
+          : "borrado de copias",
     sha: null,
     resultado: "error",
-    output: datos.error,
+    output: sinValoresDeFilas(datos.error),
   });
 }
 

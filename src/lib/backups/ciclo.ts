@@ -108,10 +108,20 @@ async function cerrarFila(
   resultado: ResultadoElemento[] | string,
 ): Promise<void> {
   // copiarProyecto leaves an element en_curso when its closing update failed.
-  const { count } = await prisma.elementoCopia.updateMany({
-    where: { backupId, resultado: "en_curso" },
-    data: { resultado: "error", error: ELEMENTO_SIN_CERRAR },
-  });
+  // If this sweep fails too, some element may still be open: the copy cannot
+  // count as good, but it must still be closed.
+  const count = await prisma.elementoCopia
+    .updateMany({
+      where: { backupId, resultado: "en_curso" },
+      data: { resultado: "error", error: ELEMENTO_SIN_CERRAR },
+    })
+    .then(
+      (r) => r.count,
+      (err: unknown) => {
+        log.error({ err, backupId }, "No se pudieron cerrar los elementos");
+        return 1;
+      },
+    );
   const fallidos =
     typeof resultado === "string"
       ? resultado
@@ -258,9 +268,16 @@ export async function iniciarCopiaProyecto(
       .then((resultado) =>
         cerrarFila(fila.id, prep.proyecto, "manual", resultado),
       )
-      .catch((err: unknown) =>
-        log.error({ err, proyectoId }, "No se pudo registrar la copia"),
-      )
+      .catch(async (err: unknown) => {
+        log.error({ err, proyectoId }, "No se pudo registrar la copia");
+        // The history cannot say how it went, so the warning has to.
+        await notificarFalloBackup({
+          operacion: "copia",
+          origen: "manual",
+          error: `No se pudo registrar el resultado de la copia: ${motivoDeFallo(err, signal)}`,
+          proyecto: nombreDe(prep.proyecto),
+        });
+      })
       .finally(() => soltarOperacion());
     return { id: fila.id };
   } catch (err) {

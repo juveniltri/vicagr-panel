@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   release:
@@ -28,6 +29,25 @@ jobs:
           if [ "$VERSION" != "$PAQUETE" ]; then
             echo "::error::El tag $GITHUB_REF_NAME no coincide con package.json ($PAQUETE)"
             exit 1
+          fi
+
+      # Before the Release: a version without its image must not be announced.
+      - name: Publicar la imagen del Panel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          IMAGEN="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker build \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            -t "$IMAGEN:$VERSION" .
+          docker push "$IMAGEN:$VERSION"
+          MAS_ALTO="$(git tag --list 'v*.*.*' --sort=-v:refname | head -n 1)"
+          if [ "$GITHUB_REF_NAME" = "$MAS_ALTO" ]; then
+            docker tag "$IMAGEN:$VERSION" "$IMAGEN:latest"
+            docker push "$IMAGEN:latest"
           fi
 
       - name: Notas de la versión

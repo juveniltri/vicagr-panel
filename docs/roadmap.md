@@ -7,15 +7,16 @@ Para convertir items en issues de GitHub: `/to-issues`.
 
 ## Siguiente sesión
 
-Publicadas: **2.2.0** (14/10/2026, backups fase A y guía de usuario), 2.1.1, 2.1.0 y 2.0.1.
+Publicada la **3.1.0** (15/11/2026, avisos de caídas y auditoría): lo que queda de desplegar y verificar está en el
+issue #117. En curso, **3.2.0** (`feature/3.2.0`): deuda y cobertura, pendientes de la revisión de la 2.4.0 (abajo),
+CSP estricta, #109 (secreto de webhook por Proyecto) y #112 (imagen del Panel desde la CI).
+
 Si un tag apunta a un commit antiguo, crearlo con `git tag <tag> <sha>` + `git push origin <tag>`: el workflow crea la Release sin marcarla como última.
 
 `develop` y `master` están protegidas (PR y los 7 checks de CI); `gh pr merge <n> --auto --merge` mergea al pasar la CI y GitHub borra la rama al mergear.
 
-**2.4.0** (01/11/2026, backups de Proyectos y «Solo desde Cloudflare»). Ahora: desplegarla en la VPS de desarrollo y
-después en producción con `production.md` § B2b, y verificar allí lo que sigue pendiente (ver «Sin verificar en real» y
-el modo Cloudflare con `production.md` § C). Si falla algo: hotfix 2.4.1 desde `master`.
-Después, «Tras la 2.4.0».
+Sigue pendiente de la **2.4.0**: verificar en real lo de «Sin verificar en real» y el modo Cloudflare
+(`production.md` § C).
 
 ### 2.2.0 — backups, fase A (PR #56) y guía de usuario (PR #57) — publicada
 
@@ -48,22 +49,24 @@ Después, «Tras la 2.4.0».
 
 ### Tras la 2.4.0
 
-- [ ] **Tests E2E** (ver Técnico).
-- [ ] **Alerta de disco** — las métricas de la VPS ya existen; avisar por los canales de notificación al pasar del 85 %.
-- [ ] **CSP estricta** — hoy permite `'unsafe-eval'` y `'unsafe-inline'` en scripts. Ver qué lo exige (Monaco, script anti-FOUC) y pasar a nonces.
-- [ ] **Cobertura según la regla 100/80** — los umbrales de `vitest.config.ts` son una lista de ficheros; `src/lib/sesion.ts` y `src/lib/compose` (93 % de ramas por `puertoContenedorDe`) no están. Completar tests y añadirlos.
-- [ ] **Scripts muertos** — `test:integration` apunta a un `vitest.integration.config.ts` que no existe y `test:e2e` a Playwright, sin instalar. Se resuelve con los E2E.
+- [x] **Tests E2E** — 3.1.0, `npm run test:e2e` (Playwright + axe contra el stack de producción).
+- [x] **Alerta de disco** — 3.1.0.
+- [x] **CSP estricta** (3.2.0) — `script-src 'self' 'nonce-…'` sin `'unsafe-eval'` ni `'unsafe-inline'`: `src/proxy.ts` genera un nonce por petición (Next.js lo pone en sus scripts; el layout, en el anti-FOUC). `style-src` mantiene `'unsafe-inline'` porque Monaco y React escriben atributos `style`, que un nonce no cubre.
+- [x] **Cobertura según la regla 100/80** — 3.2.0: un umbral del 100 % para todo `src/lib` (salvo `src/lib/docker`, infraestructura) en vez de la lista de ficheros.
+- [x] **Scripts muertos** — 3.2.0: `test:integration` eliminado; `test:e2e` ya funciona (3.1.0).
 - [x] **Fuentes locales** — `next/font/local` con los ficheros en `src/app/fonts/`; el build ya no depende de Google.
 
 ### Pendientes de la revisión de la 2.4.0 (no bloquean)
 
-- [ ] **Backups — robustez**: `encadenar` no mata `restic dump` si el destino (`tar`/`psql`) muere pronto; `RESTIC_PROGRESS_FPS=0.2` en la copia y restauración del Panel (hoy ~12 KB/s de estado en memoria); `eliminarAuxiliar` sin timeout; retención y poda sin límite de tiempo; un `forget` fallido corta los demás; `cerrarFila` no cierra la fila si falla el barrido; si falla el revert de `lanzarDeploy` queda «deploying»; si falla `cerrarPrevia` o el update `exito` la fila de restauración queda `en_curso`.
-- [ ] **Backups — avisos e historial**: resumen del último ciclo diario en Configuración → Backups (pedido en el diseño); una cancelación del usuario también avisa como fallo; «Copia ahora» no avisa si falla `cerrarFila`; la purga al eliminar solo se registra en el log; la restauración del Panel marca `exito` aunque Traefik quede a medias; mensaje genérico si el Panel se reinicia a mitad de una restauración.
-- [ ] **Backups — listado y API**: `copiasProyecto` ofrece como restaurables elementos que fallaron (el servidor los rechaza) y `claveDeRuta` rompe el listado con una ruta desconocida; `elementosProyecto` expone `contenedorId` y rutas del host; fallo de detección como `INTERNAL_SERVER_ERROR`; webhook mixto sin log y carrera que da 500 en vez de 409.
-- [ ] **Backups — seguridad (para el próximo `/security-review`)**: colisión de nombres de proyecto compose `a-b`/`c` frente a `a`/`b-c` (con backups, una restauración podría vaciar un volumen etiquetado del otro); el stderr de psql/mysql en avisos podría llevar valores de filas; `filtrarRolesSql` quita `GRANT <superusuario> TO otro` e ignora `SECURITY LABEL ON ROLE`; contenedores auxiliares con `--network none`.
-- [ ] **Backups — UI**: el interruptor no se deshabilita al restaurar; estado local sin resincronizar tras refrescar; modal de restauración sin Escape/foco inicial/trampa de foco; `aria-label` fijo en «Restaurar»; ids con espacios; `obtenerConfiguracion` sin `catch` en la página; aviso neutro de `CopiasBackup` decidido por prefijo del mensaje; enlace «Se restaura a mano» a `/guia` en vez de `docs/recuperacion.md`.
-- [ ] **Proxy**: el router `-www` no lleva el `ipAllowList` de «Solo desde Cloudflare» (siempre responde 301 y apunta a `noop@internal`, no llega a la app); `proxy.aplicar` cuenta las rutas fuera de transacción.
-- [ ] **Previo a la 2.4.0**: eliminar un Proyecto deja sus contenedores en marcha; eliminar el último Proyecto de un Cliente da 500 (Traefik sigue conectado a la red).
+Resueltos en la 3.2.0 (`feature/3.2.0`):
+
+- [x] **Backups — robustez**: `encadenar` para el origen si el destino falla; `RESTIC_PROGRESS_FPS=0.2`; tiempos máximos para el auxiliar, `forget` y `prune`; un `forget` fallido no corta los demás; filas que ya no se quedan `en_curso`; el revert de `lanzarDeploy` se reintenta.
+- [x] **Backups — avisos e historial**: resumen del último ciclo diario en Configuración → Backups; las cancelaciones del usuario no avisan; «Copia ahora» y la purga al eliminar avisan si fallan; la restauración del Panel sin Traefik queda como éxito con avisos; mensaje explicativo si el Panel se reinicia a mitad de una restauración.
+- [x] **Backups — listado y API**: no se ofrece restaurar lo que falló; rutas desconocidas se saltan; `elementosProyecto` sin `contenedorId` ni rutas del host; un Docker caído se dice como tal; webhook con log y 409 en la carrera.
+- [x] **Backups — seguridad**: avisos sin valores de filas de psql/mysql; auxiliares con `--network none`; `SECURITY LABEL ON ROLE` filtrado. `GRANT <superusuario> TO otro` se sigue quitando a propósito (restaurarlo daría superusuario a otro rol).
+- [x] **Backups — UI**: modal con teclado (foco, Tab, Escape), botones con su copia, interruptor bloqueado al restaurar, estado resincronizado, enlace a la sección de la guía, aviso «sin configurar» por código.
+- [x] **Proxy**: el router `-www` lleva el `ipAllowList`. La carrera de `proxy.aplicar` se queda: falla en cerrado (rangos vacíos rechazan todo y se registra).
+- [x] **Previo a la 2.4.0**: eliminar un Proyecto deja sus contenedores en marcha; eliminar el último Proyecto de un Cliente da 500 (Traefik sigue conectado a la red). Resuelto en la 3.1.0 (#104).
 - [ ] **Sin verificar en real**: el ciclo diario completo y cancelar una restauración.
 
 ### Más adelante

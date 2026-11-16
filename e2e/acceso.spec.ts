@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { abrir, alerta, entrar } from "./ayudas";
-import { USUARIO } from "./entorno";
+import { BASE, USUARIO } from "./entorno";
 
 test("una contraseña incorrecta no entra y lo dice", async ({ page }) => {
   await abrir(page, "/login");
@@ -62,5 +62,20 @@ test.describe("con sesión", () => {
         );
       expect.soft(graves, ruta).toEqual([]);
     }
+  });
+
+  test("la CSP solo deja scripts propios y con nonce, y nada la incumple", async () => {
+    const violaciones: string[] = [];
+    page.on("console", (m) => {
+      if (m.text().includes("Content Security Policy"))
+        violaciones.push(m.text());
+    });
+    for (const ruta of ["/", "/proyectos", "/configuracion", "/novedades"]) {
+      const res = await page.goto(BASE + ruta);
+      const csp = res?.headers()["content-security-policy"] ?? "";
+      expect(csp, ruta).toMatch(/script-src 'self' 'nonce-[^']+'(;|$)/);
+      await page.waitForLoadState("networkidle");
+    }
+    expect(violaciones).toEqual([]);
   });
 });

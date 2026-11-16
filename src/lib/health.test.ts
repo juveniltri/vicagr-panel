@@ -41,6 +41,15 @@ describe("comprobarSalud", () => {
     expect(result.checks.docker).toBe("ok");
   });
 
+  it("sin npm (arranque con node directamente) la versión es «unknown»", async () => {
+    vi.stubEnv("npm_package_version", undefined);
+    mockQueryRaw.mockResolvedValue([{ "?column?": 1 }]);
+    mockPing.mockResolvedValue(undefined);
+
+    expect((await comprobarSalud()).version).toBe("unknown");
+    vi.unstubAllEnvs();
+  });
+
   it("devuelve degraded con database error cuando DB falla", async () => {
     mockQueryRaw.mockRejectedValue(new Error("Connection refused"));
     mockPing.mockResolvedValue(undefined);

@@ -213,4 +213,23 @@ describe("destino que no lee su entrada", () => {
       expect((err as ErrorProceso).codigo).toBe(7);
     }
   });
+
+  // A restic dump of a big snapshot would keep downloading for nothing.
+  it("encadenar para el origen en cuanto el destino falla, con el error del destino", async () => {
+    const lento = {
+      comando: node,
+      args: ["-e", "setInterval(() => process.stdout.write('x'), 10)"],
+    };
+    const muere = {
+      comando: node,
+      args: ["-e", "console.error('psql: roto'); process.exit(2)"],
+    };
+    const inicio = Date.now();
+
+    const err = await encadenar(lento, muere, {}).catch((e: unknown) => e);
+
+    expect(Date.now() - inicio).toBeLessThan(5_000);
+    expect((err as ErrorProceso).codigo).toBe(2);
+    expect((err as Error).message).toContain("psql: roto");
+  });
 });
